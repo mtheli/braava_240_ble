@@ -1,0 +1,14 @@
+{
+  "domain": "braava_240_ble",
+  "name": "iRobot Braava 240 BLE",
+  "version": "0.1.0",
+  "requirements": ["bleak>=0.21.0", "bleak-retry-connector>=3.5.0"],
+  "bluetooth": [
+    {"service_uuid": "0bd51777-e7cb-469b-8e4d-2742f1ba77cc"}
+  ],
+  "config_flow": true,
+  "options_flow": false,
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "homeassistant": "2024.11.0"
+}

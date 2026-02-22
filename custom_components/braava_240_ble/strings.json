@@ -1,0 +1,63 @@
+{
+  "config": {
+    "flow_title": "iRobot Braava 240 ({name})",
+    "step": {
+      "bluetooth_confirm": {
+        "title": "Braava 240 gefunden",
+        "description": "Möchtest du **{name}** zu Home Assistant hinzufügen?"
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zum Braava 240 fehlgeschlagen. Stelle sicher, dass der Roboter eingeschaltet und in Reichweite ist."
+    },
+    "abort": {
+      "already_configured": "Gerät ist bereits konfiguriert.",
+      "no_devices_found": "Kein Braava 240 gefunden. Stelle sicher, dass der Roboter eingeschaltet ist.",
+      "not_supported": "Dieses Gerät wird nicht unterstützt."
+    }
+  },
+  "entity": {
+    "vacuum": {},
+    "sensor": {
+      "robot_state": {
+        "name": "Status",
+        "state": {
+          "idle": "Bereit",
+          "cleaning": "Reinigt",
+          "error": "Fehler"
+        }
+      },
+      "battery": {
+        "name": "Akku"
+      },
+      "pad_type": {
+        "name": "Wischtuch",
+        "state": {
+          "invalid": "Ungültig",
+          "damp": "Feucht",
+          "dry": "Trocken",
+          "wet": "Nass",
+          "reusable_damp": "Wiederverwendbar feucht",
+          "reusable_dry": "Wiederverwendbar trocken",
+          "reusable_wet": "Wiederverwendbar nass",
+          "plate": "Platte",
+          "all": "Alle",
+          "no_pad": "Kein Tuch"
+        }
+      }
+    },
+    "button": {
+      "power_off": {
+        "name": "Ausschalten"
+      }
+    },
+    "binary_sensor": {
+      "connected": {
+        "name": "Verbunden"
+      },
+      "cleaning": {
+        "name": "Reinigt"
+      }
+    }
+  }
+}
