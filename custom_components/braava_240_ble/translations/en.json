@@ -1,0 +1,63 @@
+{
+  "config": {
+    "flow_title": "iRobot Braava 240 ({name})",
+    "step": {
+      "bluetooth_confirm": {
+        "title": "Braava 240 found",
+        "description": "Do you want to add **{name}** to Home Assistant?"
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the Braava 240. Make sure the robot is powered on and in range."
+    },
+    "abort": {
+      "already_configured": "Device is already configured.",
+      "no_devices_found": "No Braava 240 found. Make sure the robot is powered on.",
+      "not_supported": "This device is not supported."
+    }
+  },
+  "entity": {
+    "vacuum": {},
+    "sensor": {
+      "robot_state": {
+        "name": "Status",
+        "state": {
+          "idle": "Idle",
+          "cleaning": "Cleaning",
+          "error": "Error"
+        }
+      },
+      "battery": {
+        "name": "Battery"
+      },
+      "pad_type": {
+        "name": "Cleaning Pad",
+        "state": {
+          "invalid": "Invalid",
+          "damp": "Damp",
+          "dry": "Dry",
+          "wet": "Wet",
+          "reusable_damp": "Reusable damp",
+          "reusable_dry": "Reusable dry",
+          "reusable_wet": "Reusable wet",
+          "plate": "Plate",
+          "all": "All",
+          "no_pad": "No pad"
+        }
+      }
+    },
+    "button": {
+      "power_off": {
+        "name": "Power Off"
+      }
+    },
+    "binary_sensor": {
+      "connected": {
+        "name": "Connected"
+      },
+      "cleaning": {
+        "name": "Cleaning"
+      }
+    }
+  }
+}
