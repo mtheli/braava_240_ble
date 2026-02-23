@@ -50,6 +50,7 @@ CMD_SET_NAME       = 0x05  # Set robot name (payload: 20-byte null-terminated st
 CMD_GET_ROOM_CONFINE = 0x07  # Query room confinement setting (1-byte response: 0/1)
 CMD_SET_ROOM_CONFINE = 0x08  # Set room confinement (payload: 0=off, 1=on)
 CMD_REMOTE_CONTROL = 0x09  # Enable/disable remote control mode (payload: 1=on, 0=off)
+CMD_VIBRATE        = 0x0C  # Enable/disable vibration (payload: 0=off, 1=on, not persistent) – unused: triggers continuous vibration, requires remote control mode
 CMD_BEEP           = 0x0D  # Trigger an audible beep (requires remote control mode)
 CMD_SPOT_CLEAN     = 0x0E  # Start spot cleaning (limited area)
 CMD_START_CLEAN    = 0x10  # Initiates a full-room cleaning mission
