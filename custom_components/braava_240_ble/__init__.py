@@ -27,7 +27,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up the Braava 240 integration from a config entry."""
     address = entry.data["address"]
 
-    coordinator = BraavaDataUpdateCoordinator(hass, address)
+    coordinator = BraavaDataUpdateCoordinator(
+        hass,
+        address,
+        sw_version=entry.data.get("sw_version"),
+        hw_version=entry.data.get("hw_version"),
+        serial_number=entry.data.get("serial_number"),
+    )
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator

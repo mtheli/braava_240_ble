@@ -17,7 +17,33 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass, entry, async_add_entities):
     """Set up Braava 240 buttons from a config entry."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([BraavaPowerOffButton(coordinator)])
+    async_add_entities([
+        BraavaBeepButton(coordinator),
+        BraavaPowerOffButton(coordinator),
+    ])
+
+
+class BraavaBeepButton(ButtonEntity):
+    """Button that triggers an audible beep on the Braava 240 (find robot)."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "beep"
+    _attr_icon = "mdi:volume-high"
+
+    def __init__(self, coordinator) -> None:
+        self._coordinator = coordinator
+        self._attr_unique_id = f"{coordinator.address}_beep"
+        self._attr_device_info = device_info(
+            coordinator.address,
+            sw_version=coordinator.sw_version,
+            hw_version=coordinator.hw_version,
+            serial_number=coordinator.serial_number,
+        )
+
+    async def async_press(self) -> None:
+        """Send beep command to the robot."""
+        _LOGGER.info("Beep requested for Braava 240")
+        await self._coordinator.async_beep()
 
 
 class BraavaPowerOffButton(ButtonEntity):

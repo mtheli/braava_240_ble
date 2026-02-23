@@ -41,8 +41,10 @@ TSTATUS_IPCPEND = -2   # 0xFE unsigned – keep polling cc3
 
 # ── Robot command IDs (from ALRobotCommands.java) ─────────────────────────────
 # These are packed into command packets and sent via the transport layer.
-CMD_NOP          = 0x00
-CMD_START_CLEAN  = 0x10  # Initiates a cleaning mission
+CMD_NOP            = 0x00
+CMD_REMOTE_CONTROL = 0x09  # Enable/disable remote control mode (payload: 1=on, 0=off)
+CMD_BEEP           = 0x0D  # Trigger an audible beep (requires remote control mode)
+CMD_START_CLEAN    = 0x10  # Initiates a cleaning mission
 CMD_STOP_CLEAN   = 0x11  # Terminates an active cleaning mission
 CMD_GET_STATUS   = 0x12  # Query robot state + mission status
 CMD_GET_BATTERY  = 0x13  # Query battery level and voltages

@@ -49,7 +49,9 @@ from .const import (
     CHAR_UUID_DATA,
     CHAR_UUID_HEARTBEAT,
     CHAR_UUID_STATUS,
+    CMD_BEEP,
     CMD_GET_BATTERY,
+    CMD_REMOTE_CONTROL,
     CMD_GET_PAD_TYPE,
     CMD_GET_STATUS,
     CMD_POWER_OFF,
@@ -97,7 +99,14 @@ class BraavaProtocolError(Exception):
 class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
     """Coordinator for persistent BLE connection to the Braava 240."""
 
-    def __init__(self, hass, address: str) -> None:
+    def __init__(
+        self,
+        hass,
+        address: str,
+        sw_version: str | None = None,
+        hw_version: str | None = None,
+        serial_number: str | None = None,
+    ) -> None:
         super().__init__(
             hass,
             _LOGGER,
@@ -109,11 +118,12 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
         # Latest parsed data from the robot
         self.data: dict = {}
 
-        # Hardware info read from GATT Device Information Service on first connect
-        self.device_info_read = False
-        self.sw_version: str | None = None
-        self.hw_version: str | None = None
-        self.serial_number: str | None = None
+        # Hardware info – pre-populated from config entry data (read during config flow)
+        # or read from GATT Device Information Service on first connect as fallback
+        self.device_info_read = sw_version is not None or hw_version is not None
+        self.sw_version: str | None = sw_version
+        self.hw_version: str | None = hw_version
+        self.serial_number: str | None = serial_number
         self.model_number: str | None = None
 
         # BLE client
@@ -557,6 +567,15 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
         _LOGGER.info("STOP_CLEAN sent to Braava 240")
         await asyncio.sleep(1.0)
         await self._poll()
+
+    async def async_beep(self) -> None:
+        """Send BEEP command (0x0D). Requires remote control mode to be active."""
+        await self._send_robot_command(CMD_REMOTE_CONTROL, payload=bytes([1]))
+        try:
+            await self._send_robot_command(CMD_BEEP)
+            _LOGGER.info("BEEP sent to Braava 240")
+        finally:
+            await self._send_robot_command(CMD_REMOTE_CONTROL, payload=bytes([0]))
 
     async def async_power_off(self) -> None:
         """Send POWER_OFF command (0x15). The robot will shut down completely."""
