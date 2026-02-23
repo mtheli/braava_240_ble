@@ -98,6 +98,7 @@ The vacuum entity exposes `start`, `stop` and `locate` (beep) actions, and addit
 type: custom:vacuum-card
 entity: vacuum.braava_240
 battery_entity: sensor.braava_240_battery
+image: https://raw.githubusercontent.com/mtheli/braava_240_ble/master/images/braava-jet-240.svg
 stats:
   default:
     - entity_id: sensor.braava_240_cleaning_pad
@@ -143,7 +144,7 @@ The Braava 240 firmware exposes 26 robot commands. This integration currently us
 | 0x09 | REMOTE_CONTROL | Implemented | Enable/disable remote control mode |
 | 0x0A | JOYSTICK | – | Manual joystick control |
 | 0x0B | SPRAY | – | Trigger water spray |
-| 0x0C | VIBRATE | – | Enable/disable vibration |
+| 0x0C | VIBRATE | Unused | Enable/disable vibration (requires remote control mode) |
 | 0x0D | BEEP | Implemented | Trigger audible beep |
 | 0x0E | SPOT_CLEAN | Implemented | Start spot cleaning |
 | 0x0F | GET_APP_DATA | – | Query mission data (runtime, ending reason) |
