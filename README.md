@@ -1,5 +1,9 @@
 # iRobot Braava 240 BLE – Home Assistant Integration
 
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![GitHub Release](https://img.shields.io/github/v/release/mtheli/braava_240_ble)](https://github.com/mtheli/braava_240_ble/releases)
+[![License: MIT](https://img.shields.io/github/license/mtheli/braava_240_ble)](LICENSE)
+
 Custom Home Assistant integration to control the iRobot Braava 240 mopping robot via Bluetooth Low Energy (BLE).
 
 ![Home Assistant Screenshot](images/screenshot.png)
