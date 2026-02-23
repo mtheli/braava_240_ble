@@ -19,6 +19,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([
         BraavaBeepButton(coordinator),
+        BraavaResetWetnessButton(coordinator),
         BraavaPowerOffButton(coordinator),
     ])
 
@@ -44,6 +45,29 @@ class BraavaBeepButton(ButtonEntity):
         """Send beep command to the robot."""
         _LOGGER.info("Beep requested for Braava 240")
         await self._coordinator.async_beep()
+
+
+class BraavaResetWetnessButton(ButtonEntity):
+    """Button that resets all wetness levels to defaults (medium)."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "reset_wetness"
+    _attr_icon = "mdi:restore"
+
+    def __init__(self, coordinator) -> None:
+        self._coordinator = coordinator
+        self._attr_unique_id = f"{coordinator.address}_reset_wetness"
+        self._attr_device_info = device_info(
+            coordinator.address,
+            sw_version=coordinator.sw_version,
+            hw_version=coordinator.hw_version,
+            serial_number=coordinator.serial_number,
+        )
+
+    async def async_press(self) -> None:
+        """Reset all wetness levels to defaults."""
+        _LOGGER.info("Reset wetness requested for Braava 240")
+        await self._coordinator.async_reset_wetness()
 
 
 class BraavaPowerOffButton(ButtonEntity):

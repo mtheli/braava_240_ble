@@ -34,7 +34,6 @@ _SUPPORTED_FEATURES = (
     VacuumEntityFeature.START
     | VacuumEntityFeature.STOP
     | VacuumEntityFeature.STATE
-    | VacuumEntityFeature.BATTERY
 )
 
 
@@ -76,13 +75,6 @@ class BraavaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
         if robot_state == ROBOT_STATE_MISSION_ERROR:
             return VacuumActivity.ERROR
         return VacuumActivity.IDLE
-
-    @property
-    def battery_level(self) -> int | None:
-        """Return battery percentage (0–100) if available."""
-        if self.coordinator.data:
-            return self.coordinator.data.get("battery_level")
-        return None
 
     @property
     def available(self) -> bool:

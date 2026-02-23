@@ -50,9 +50,42 @@
         }
       }
     },
+    "select": {
+      "cleaning_mode": {
+        "name": "Reinigungsmodus",
+        "state": {
+          "normal": "Normal",
+          "spot": "Spot"
+        }
+      },
+      "wetness_wet": {
+        "name": "Feuchtigkeit Nass-Tuch",
+        "state": { "low": "Niedrig", "medium": "Mittel", "high": "Hoch" }
+      },
+      "wetness_damp": {
+        "name": "Feuchtigkeit Feucht-Tuch",
+        "state": { "low": "Niedrig", "medium": "Mittel", "high": "Hoch" }
+      },
+      "wetness_reusable_wet": {
+        "name": "Feuchtigkeit Mehrweg nass",
+        "state": { "low": "Niedrig", "medium": "Mittel", "high": "Hoch" }
+      },
+      "wetness_reusable_damp": {
+        "name": "Feuchtigkeit Mehrweg feucht",
+        "state": { "low": "Niedrig", "medium": "Mittel", "high": "Hoch" }
+      }
+    },
+    "number": {
+      "volume": {
+        "name": "Lautstärke"
+      }
+    },
     "button": {
       "beep": {
         "name": "Signalton"
+      },
+      "reset_wetness": {
+        "name": "Feuchtigkeit zurücksetzen"
       },
       "power_off": {
         "name": "Ausschalten"
