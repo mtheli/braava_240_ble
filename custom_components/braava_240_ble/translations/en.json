@@ -5,6 +5,10 @@
       "bluetooth_confirm": {
         "title": "Braava 240 found",
         "description": "Do you want to add **{name}** to Home Assistant?"
+      },
+      "show_device_info": {
+        "title": "Device Info",
+        "description": "Successfully connected to **{name}**.\n\n**Hardware Version:** {hw_version}\n**Firmware Version:** {fw_version}\n**Serial Number:** {serial_number}\n\n**GATT Characteristics:**\n{characteristics}\n\nClick Submit to finish setup."
       }
     },
     "error": {
@@ -47,6 +51,9 @@
       }
     },
     "button": {
+      "beep": {
+        "name": "Beep"
+      },
       "power_off": {
         "name": "Power Off"
       }
