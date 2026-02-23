@@ -101,6 +101,8 @@ battery_entity: sensor.braava_240_battery
 image: https://raw.githubusercontent.com/mtheli/braava_240_ble/master/images/braava-jet-240.svg
 stats:
   default:
+    - attribute: robot_name
+      subtitle: Name
     - entity_id: sensor.braava_240_cleaning_pad
       subtitle: Pad
     - attribute: cleaning_mode

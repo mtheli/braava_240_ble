@@ -1,64 +1,64 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 450" width="400" height="450">
-  <!-- Braava Jet 240 - Top-down view, grey line art only -->
+<svg width="490" height="490" fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 490 490">
+  <!-- Braava Jet 240 - Top-down view, grey lines + turquoise button -->
 
-  <!-- Main body - compact square shape, slightly taller than wide, large rounded corners -->
-  <rect x="100" y="105" width="200" height="230" rx="45" ry="45"
+  <!-- Main body -->
+  <rect x="145" y="120" width="200" height="230" rx="45" ry="45"
         fill="none" stroke="#999" stroke-width="2"/>
 
-  <!-- Inner edge / seam line following body shape -->
-  <rect x="110" y="115" width="180" height="210" rx="38" ry="38"
+  <!-- Inner seam line -->
+  <rect x="155" y="130" width="180" height="210" rx="38" ry="38"
         fill="none" stroke="#ccc" stroke-width="1"/>
 
-  <!-- Top decorative stripe / panel line -->
-  <path d="M145 130 L255 130" stroke="#bbb" stroke-width="1"/>
-  <path d="M140 145 L260 145" stroke="#ccc" stroke-width="0.8"/>
+  <!-- Top panel lines -->
+  <path d="M190 145 L300 145" stroke="#bbb" stroke-width="1"/>
+  <path d="M185 160 L305 160" stroke="#ccc" stroke-width="0.8"/>
 
-  <!-- Large CLEAN button - center circle -->
-  <circle cx="200" cy="215" r="32" fill="none" stroke="#999" stroke-width="2"/>
-  <!-- Inner button ring -->
-  <circle cx="200" cy="215" r="26" fill="none" stroke="#bbb" stroke-width="1"/>
+  <!-- CLEAN button - outer ring (darker turquoise) -->
+  <circle cx="245" cy="230" r="32" fill="#2ec4b6" stroke="#1a9e92" stroke-width="2"/>
+  <!-- Inner ring (darker turquoise stroke, white fill) -->
+  <circle cx="245" cy="230" r="26" fill="white" stroke="#1a9e92" stroke-width="1.2"/>
 
-  <!-- CLEAN text - upper area of button -->
-  <text x="200" y="211" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
-        font-size="8" font-weight="700" fill="#aaa" letter-spacing="1.8">CLEAN</text>
+  <!-- CLEAN text (turquoise) -->
+  <text x="245" y="226" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
+        font-size="8" font-weight="700" fill="#1a9e92" letter-spacing="1.8">CLEAN</text>
 
-  <!-- Power symbol (smaller, below CLEAN text) -->
-  <path d="M193 222 A9 9 0 1 0 207 222"
-        fill="none" stroke="#aaa" stroke-width="1.4" stroke-linecap="round"/>
-  <line x1="200" y1="218" x2="200" y2="225"
-        stroke="#aaa" stroke-width="1.4" stroke-linecap="round"/>
+  <!-- Power symbol (turquoise) -->
+  <path d="M238 237 A9 9 0 1 0 252 237"
+        fill="none" stroke="#1a9e92" stroke-width="1.4" stroke-linecap="round"/>
+  <line x1="245" y1="233" x2="245" y2="240"
+        stroke="#1a9e92" stroke-width="1.4" stroke-linecap="round"/>
 
-  <!-- Text labels in grey -->
-  <text x="200" y="140" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
+  <!-- iROBOT label -->
+  <text x="245" y="155" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
         font-size="9" font-weight="600" fill="#aaa" letter-spacing="2">iROBOT</text>
 
-  <text x="200" y="270" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
+  <!-- BRAAVA JET label -->
+  <text x="245" y="285" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
         font-size="8" font-weight="500" fill="#bbb" letter-spacing="2.5">BRAAVA JET</text>
 
-  <text x="200" y="283" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
+  <!-- 240 label -->
+  <text x="245" y="298" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
         font-size="7" fill="#ccc" letter-spacing="1.5">240</text>
 
-  <!-- Bottom cleaning pad edge visible -->
-  <path d="M140 320 Q140 335 200 335 Q260 335 260 320"
+  <!-- Bottom cleaning pad -->
+  <path d="M185 335 Q185 350 245 350 Q305 350 305 335"
         fill="none" stroke="#bbb" stroke-width="1.2"/>
-  <line x1="160" y1="326" x2="240" y2="326" stroke="#ddd" stroke-width="0.8"/>
-  <line x1="165" y1="330" x2="235" y2="330" stroke="#ddd" stroke-width="0.8"/>
+  <line x1="205" y1="341" x2="285" y2="341" stroke="#ddd" stroke-width="0.8"/>
+  <line x1="210" y1="345" x2="280" y2="345" stroke="#ddd" stroke-width="0.8"/>
 
-  <!-- Side wheel wells - left -->
-  <ellipse cx="108" cy="215" rx="5" ry="18" fill="none" stroke="#bbb" stroke-width="1.2"/>
+  <!-- Wheel wells -->
+  <ellipse cx="153" cy="230" rx="5" ry="18" fill="none" stroke="#bbb" stroke-width="1.2"/>
+  <ellipse cx="337" cy="230" rx="5" ry="18" fill="none" stroke="#bbb" stroke-width="1.2"/>
 
-  <!-- Side wheel wells - right -->
-  <ellipse cx="292" cy="215" rx="5" ry="18" fill="none" stroke="#bbb" stroke-width="1.2"/>
+  <!-- Rear bumper -->
+  <path d="M190 340 Q245 355 300 340" fill="none" stroke="#ccc" stroke-width="0.8"/>
 
-  <!-- Rear bumper / edge detail -->
-  <path d="M145 325 Q200 340 255 325" fill="none" stroke="#ccc" stroke-width="0.8"/>
+  <!-- LED indicator -->
+  <circle cx="245" cy="133" r="3" fill="none" stroke="#bbb" stroke-width="1"/>
 
-  <!-- Small indicator LED dot (top, near nozzle) -->
-  <circle cx="200" cy="118" r="3" fill="none" stroke="#bbb" stroke-width="1"/>
-
-  <!-- Corner detail lines - subtle panel seams -->
-  <path d="M120 155 Q115 155 113 160" fill="none" stroke="#ddd" stroke-width="0.7"/>
-  <path d="M280 155 Q285 155 287 160" fill="none" stroke="#ddd" stroke-width="0.7"/>
-  <path d="M120 290 Q115 290 113 285" fill="none" stroke="#ddd" stroke-width="0.7"/>
-  <path d="M280 290 Q285 290 287 285" fill="none" stroke="#ddd" stroke-width="0.7"/>
+  <!-- Corner seams -->
+  <path d="M165 170 Q160 170 158 175" fill="none" stroke="#ddd" stroke-width="0.7"/>
+  <path d="M325 170 Q330 170 332 175" fill="none" stroke="#ddd" stroke-width="0.7"/>
+  <path d="M165 305 Q160 305 158 300" fill="none" stroke="#ddd" stroke-width="0.7"/>
+  <path d="M325 305 Q330 305 332 300" fill="none" stroke="#ddd" stroke-width="0.7"/>
 </svg>
