@@ -53,9 +53,13 @@ from .const import (
     CMD_GET_BATTERY,
     CMD_GET_PAD_TYPE,
     CMD_GET_STATUS,
+    CMD_GET_NAME,
+    CMD_GET_ROOM_CONFINE,
     CMD_GET_VOLUME,
     CMD_GET_WETNESS,
     CMD_REMOTE_CONTROL,
+    CMD_SET_NAME,
+    CMD_SET_ROOM_CONFINE,
     CMD_SET_VOLUME,
     CMD_SET_WETNESS,
     CMD_POWER_OFF,
@@ -288,6 +292,9 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
         if not self.device_info_read:
             await self._read_gatt_device_info()
 
+        # Read robot name once after connect (rarely changes)
+        await self._read_robot_name()
+
     async def _read_gatt_device_info(self) -> None:
         """Read standard GATT Device Information Service characteristics."""
         gatt_reads = [
@@ -314,6 +321,18 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
             "Device info: serial=%s sw=%s hw=%s model=%s",
             self.serial_number, self.sw_version, self.hw_version, self.model_number,
         )
+
+    async def _read_robot_name(self) -> None:
+        """Read the robot name via GET_NAME (once after connect)."""
+        try:
+            raw = await self._send_robot_command(CMD_GET_NAME)
+            if raw:
+                parsed = parse_response(raw)
+                if parsed and parsed.get("type") == "name":
+                    self.data["robot_name"] = parsed["robot_name"]
+                    _LOGGER.info("Robot name: %s", parsed["robot_name"])
+        except BraavaProtocolError as err:
+            _LOGGER.debug("GET_NAME failed: %s", err)
 
     async def _disconnect(self) -> None:
         """Disconnect cleanly."""
@@ -580,6 +599,19 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
             except Exception as err:
                 _LOGGER.debug("GET_WETNESS error: %s", err)
 
+            # GET_ROOM_CONFINE
+            try:
+                raw = await self._send_robot_command(CMD_GET_ROOM_CONFINE)
+                if raw:
+                    parsed = parse_response(raw)
+                    if parsed:
+                        _apply(new_data, parsed)
+                        received += 1
+            except BraavaProtocolError as err:
+                _LOGGER.debug("GET_ROOM_CONFINE failed: %s", err)
+            except Exception as err:
+                _LOGGER.debug("GET_ROOM_CONFINE error: %s", err)
+
         if received > 0 or new_data != self.data:
             self.async_set_updated_data(new_data)
         else:
@@ -646,6 +678,20 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
         await self._send_robot_command(CMD_POWER_OFF)
         _LOGGER.info("POWER_OFF sent to Braava 240")
 
+    async def async_set_name(self, name: str) -> None:
+        """Send SET_NAME command (0x05). Name is a null-terminated string, max 20 bytes."""
+        encoded = name.encode("utf-8")[:19]  # Leave room for null terminator
+        payload = encoded + b"\x00" * (20 - len(encoded))  # Pad to 20 bytes
+        await self._send_robot_command(CMD_SET_NAME, payload=payload)
+        self.data["robot_name"] = encoded.decode("utf-8")
+        _LOGGER.info("SET_NAME('%s') sent to Braava 240", name)
+
+    async def async_set_room_confine(self, enabled: bool) -> None:
+        """Send SET_ROOM_CONFINE command (0x08). payload: 0=off, 1=on."""
+        await self._send_robot_command(CMD_SET_ROOM_CONFINE, payload=bytes([int(enabled)]))
+        self.data["room_confine"] = enabled
+        _LOGGER.info("SET_ROOM_CONFINE(%s) sent to Braava 240", enabled)
+
     # ── DataUpdateCoordinator override ────────────────────────────────────────
 
     async def _async_update_data(self) -> dict:
@@ -690,3 +736,7 @@ def _apply(data: dict, parsed: dict) -> None:
             "wetness_reusable_wet_str":  parsed["wetness_reusable_wet_str"],
             "wetness_reusable_damp_str": parsed["wetness_reusable_damp_str"],
         })
+    elif ptype == "name":
+        data["robot_name"] = parsed["robot_name"]
+    elif ptype == "room_confine":
+        data["room_confine"] = parsed["room_confine"]

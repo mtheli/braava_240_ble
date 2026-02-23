@@ -103,6 +103,9 @@ class BraavaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
         if pad is not None:
             attrs["pad_type"] = pad
         attrs["cleaning_mode"] = self.coordinator.cleaning_mode
+        name = self.coordinator.data.get("robot_name")
+        if name is not None:
+            attrs["robot_name"] = name
         return attrs
 
     # ── Commands ───────────────────────────────────────────────────────────────

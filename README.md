@@ -18,6 +18,8 @@ Custom Home Assistant integration to control the iRobot Braava 240 mopping robot
 - **Pad detection** – Shows the currently attached pad type (wet, damp, dry, reusable, etc.)
 - **Wetness control** – Per-pad-type wetness levels (Low / Medium / High)
 - **Volume control** – Adjustable speaker volume (0–100)
+- **Robot name** – Read and change the robot's Bluetooth name
+- **Room confinement** – Enable/disable room confinement mode
 - **Find robot** – Beep button to locate the robot
 - **Device information** – Serial number, firmware version, hardware revision via GATT Device Information Service
 - **Power off** – Power-off button to fully shut down the robot (disabled by default)
@@ -39,6 +41,8 @@ Custom Home Assistant integration to control the iRobot Braava 240 mopping robot
 | Wetness Reusable Wet | Select | Wetness level for reusable wet pads |
 | Wetness Reusable Damp | Select | Wetness level for reusable damp pads |
 | Volume | Number | Speaker volume (0–100) |
+| Name | Text | Robot name (read/write, max 20 characters) |
+| Room Confinement | Switch | Room confinement on/off |
 | Beep | Button | Trigger an audible beep to locate the robot |
 | Reset Wetness | Button | Reset all wetness levels to defaults (Medium) |
 | Power Off | Button | Fully shut down the robot (must be manually enabled) |
@@ -86,7 +90,7 @@ The robot uses a two-layer GATT protocol:
 
 This integration works with the [Vacuum Card](https://github.com/denysdovhan/vacuum-card) by Denys Dovhan for a visual dashboard experience.
 
-The vacuum entity exposes `start`, `stop` and `locate` (beep) actions, and additional attributes (`pad_type`, `cleaning_mode`, `runtime_minutes`, `mission_status`, `battery_voltage_v`) that can be used as stats.
+The vacuum entity exposes `start`, `stop` and `locate` (beep) actions, and additional attributes (`pad_type`, `cleaning_mode`, `robot_name`, `runtime_minutes`, `mission_status`, `battery_voltage_v`) that can be used as stats. For translated values, reference the sensor entity directly via `entity_id` instead of using `attribute`.
 
 ### Example configuration
 
@@ -96,7 +100,7 @@ entity: vacuum.braava_240
 battery_entity: sensor.braava_240_battery
 stats:
   default:
-    - attribute: pad_type
+    - entity_id: sensor.braava_240_cleaning_pad
       subtitle: Pad
     - attribute: cleaning_mode
       subtitle: Mode
@@ -104,7 +108,7 @@ stats:
     - attribute: runtime_minutes
       subtitle: Runtime
       unit: min
-    - attribute: pad_type
+    - entity_id: sensor.braava_240_cleaning_pad
       subtitle: Pad
 shortcuts:
   - name: Spot
@@ -123,7 +127,7 @@ shortcuts:
 
 ## Supported Robot Commands
 
-The Braava 240 firmware exposes 26 robot commands. This integration currently uses 14 of them:
+The Braava 240 firmware exposes 26 robot commands. This integration currently uses 18 of them:
 
 | ID | Command | Status | Description |
 |----|---------|--------|-------------|
@@ -132,10 +136,10 @@ The Braava 240 firmware exposes 26 robot commands. This integration currently us
 | 0x02 | SET_WETNESS | Implemented | Set wetness level per pad type |
 | 0x03 | GET_VOLUME | Implemented | Query speaker volume |
 | 0x04 | SET_VOLUME | Implemented | Set speaker volume |
-| 0x05 | SET_NAME | – | Set robot name |
+| 0x05 | SET_NAME | Implemented | Set robot name |
 | 0x06 | GET_BBK_DATA | – | Lifetime statistics (missions, runtime, errors) |
-| 0x07 | GET_ROOM_CONFINE | – | Query room confinement setting |
-| 0x08 | SET_ROOM_CONFINE | – | Enable/disable room confinement |
+| 0x07 | GET_ROOM_CONFINE | Implemented | Query room confinement setting |
+| 0x08 | SET_ROOM_CONFINE | Implemented | Enable/disable room confinement |
 | 0x09 | REMOTE_CONTROL | Implemented | Enable/disable remote control mode |
 | 0x0A | JOYSTICK | – | Manual joystick control |
 | 0x0B | SPRAY | – | Trigger water spray |
@@ -151,7 +155,7 @@ The Braava 240 firmware exposes 26 robot commands. This integration currently us
 | 0x15 | POWER_OFF | Implemented | Power off the robot |
 | 0x16 | GET_ROBOT_REGISTERED | – | Check app registration status |
 | 0x17 | SET_ROBOT_REGISTERED | – | Set app registration status |
-| 0x18 | GET_NAME | – | Query robot name |
+| 0x18 | GET_NAME | Implemented | Query robot name |
 | 0x19 | FACTORY_RESET | – | Factory reset the robot |
 
 ## License

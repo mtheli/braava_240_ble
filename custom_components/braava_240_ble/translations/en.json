@@ -98,6 +98,16 @@
       "cleaning": {
         "name": "Cleaning"
       }
+    },
+    "text": {
+      "robot_name": {
+        "name": "Name"
+      }
+    },
+    "switch": {
+      "room_confine": {
+        "name": "Room Confinement"
+      }
     }
   }
 }

@@ -98,6 +98,16 @@
       "cleaning": {
         "name": "Reinigt"
       }
+    },
+    "text": {
+      "robot_name": {
+        "name": "Name"
+      }
+    },
+    "switch": {
+      "room_confine": {
+        "name": "Raumbegrenzung"
+      }
     }
   }
 }

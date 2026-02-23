@@ -20,7 +20,9 @@ import logging
 
 from .const import (
     CMD_GET_BATTERY,
+    CMD_GET_NAME,
     CMD_GET_PAD_TYPE,
+    CMD_GET_ROOM_CONFINE,
     CMD_GET_STATUS,
     CMD_GET_VOLUME,
     CMD_GET_WETNESS,
@@ -107,6 +109,10 @@ def parse_response(data: bytes) -> dict | None:
         return _parse_volume(data, payload_offset)
     if cmd == CMD_GET_WETNESS:
         return _parse_wetness(data, payload_offset)
+    if cmd == CMD_GET_NAME:
+        return _parse_name(data, payload_offset)
+    if cmd == CMD_GET_ROOM_CONFINE:
+        return _parse_room_confine(data, payload_offset)
 
     _LOGGER.debug(
         "Unknown response CMD 0x%02x (%d bytes): %s",
@@ -277,4 +283,45 @@ def _parse_wetness(data: bytes, offset: int) -> dict | None:
         "wetness_damp_str":          WETNESS_LEVEL_MAP.get(damp, f"unknown_{damp}"),
         "wetness_reusable_wet_str":  WETNESS_LEVEL_MAP.get(r_wet, f"unknown_{r_wet}"),
         "wetness_reusable_damp_str": WETNESS_LEVEL_MAP.get(r_damp, f"unknown_{r_damp}"),
+    }
+
+
+def _parse_name(data: bytes, offset: int) -> dict | None:
+    """Parse GET_NAME response payload (up to 20 bytes).
+
+    Payload layout (from ALRobotCommands.java GET_NAME_RESPONSE):
+        Bytes 0-19: robot name as null-terminated UTF-8 string
+    """
+    if len(data) < offset + 1:
+        _LOGGER.debug("GET_NAME response too short: %d bytes", len(data))
+        return None
+
+    raw = data[offset:]
+    # Strip null terminator and trailing padding
+    name = bytes(raw).split(b"\x00", 1)[0].decode("utf-8", errors="replace")
+
+    _LOGGER.debug("Name: %s", name)
+
+    return {
+        "type": "name",
+        "robot_name": name,
+    }
+
+
+def _parse_room_confine(data: bytes, offset: int) -> dict | None:
+    """Parse GET_ROOM_CONFINE response payload (1 byte).
+
+    Payload layout (from ALRobotCommands.java GET_ROOM_CONFINE_RESPONSE):
+        Byte 0: confinement – 0=off, 1=on
+    """
+    if len(data) < offset + 1:
+        _LOGGER.debug("GET_ROOM_CONFINE response too short: %d bytes", len(data))
+        return None
+
+    value = data[offset]
+    _LOGGER.debug("Room confine: %d", value)
+
+    return {
+        "type": "room_confine",
+        "room_confine": bool(value),
     }

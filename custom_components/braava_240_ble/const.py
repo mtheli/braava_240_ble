@@ -46,6 +46,9 @@ CMD_GET_WETNESS    = 0x01  # Query wetness levels for all pad types (4-byte resp
 CMD_SET_WETNESS    = 0x02  # Set wetness level (payload: [type, level])
 CMD_GET_VOLUME     = 0x03  # Query current volume level (1-byte response)
 CMD_SET_VOLUME     = 0x04  # Set volume level (1-byte payload)
+CMD_SET_NAME       = 0x05  # Set robot name (payload: 20-byte null-terminated string)
+CMD_GET_ROOM_CONFINE = 0x07  # Query room confinement setting (1-byte response: 0/1)
+CMD_SET_ROOM_CONFINE = 0x08  # Set room confinement (payload: 0=off, 1=on)
 CMD_REMOTE_CONTROL = 0x09  # Enable/disable remote control mode (payload: 1=on, 0=off)
 CMD_BEEP           = 0x0D  # Trigger an audible beep (requires remote control mode)
 CMD_SPOT_CLEAN     = 0x0E  # Start spot cleaning (limited area)
@@ -55,6 +58,7 @@ CMD_GET_STATUS   = 0x12  # Query robot state + mission status
 CMD_GET_BATTERY  = 0x13  # Query battery level and voltages
 CMD_GET_PAD_TYPE = 0x14  # Query attached cleaning pad type
 CMD_POWER_OFF    = 0x15  # Power off the robot (ROBOT_CMD_OFF)
+CMD_GET_NAME     = 0x18  # Query robot name (20-byte null-terminated string response)
 
 # ── Protocol message structure ────────────────────────────────────────────────
 # Robot command format: [cmd_id, total_size, checksum, payload...]

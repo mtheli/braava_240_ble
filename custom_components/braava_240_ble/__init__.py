@@ -20,7 +20,7 @@ from .coordinator import BraavaDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.BUTTON, Platform.NUMBER, Platform.SELECT, Platform.VACUUM, Platform.SENSOR, Platform.BINARY_SENSOR]
+PLATFORMS = [Platform.BUTTON, Platform.NUMBER, Platform.SELECT, Platform.SWITCH, Platform.TEXT, Platform.VACUUM, Platform.SENSOR, Platform.BINARY_SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
