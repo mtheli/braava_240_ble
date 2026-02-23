@@ -94,15 +94,12 @@ The vacuum entity exposes `start`, `stop` and `locate` (beep) actions, and addit
 type: custom:vacuum-card
 entity: vacuum.braava_240
 battery_entity: sensor.braava_240_battery
-image: /local/braava_240.png
 stats:
   default:
     - attribute: pad_type
       subtitle: Pad
     - attribute: cleaning_mode
       subtitle: Mode
-    - entity_id: sensor.braava_240_volume
-      subtitle: Volume
   cleaning:
     - attribute: runtime_minutes
       subtitle: Runtime
