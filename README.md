@@ -27,7 +27,7 @@ Custom Home Assistant integration to control the iRobot Braava 240 mopping robot
 
 | Entity | Type | Description |
 |--------|------|-------------|
-| Braava 240 | Vacuum | Start/stop cleaning |
+| Braava 240 | Vacuum | Start/stop/locate cleaning |
 | Status | Sensor | Robot state (Ready / Cleaning / Error) |
 | Battery | Sensor | Battery level in percent |
 | Cleaning Pad | Sensor | Detected pad type |
@@ -81,6 +81,48 @@ The robot uses a two-layer GATT protocol:
 
 - **Transport layer** – Manages data transfer via two BLE characteristics (command + status)
 - **Robot command layer** – The actual commands (query status, start cleaning, etc.) are transferred as packets via a data characteristic
+
+## Vacuum Card
+
+This integration works with the [Vacuum Card](https://github.com/denysdovhan/vacuum-card) by Denys Dovhan for a visual dashboard experience.
+
+The vacuum entity exposes `start`, `stop` and `locate` (beep) actions, and additional attributes (`pad_type`, `cleaning_mode`, `runtime_minutes`, `mission_status`, `battery_voltage_v`) that can be used as stats.
+
+### Example configuration
+
+```yaml
+type: custom:vacuum-card
+entity: vacuum.braava_240
+battery_entity: sensor.braava_240_battery
+image: /local/braava_240.png
+stats:
+  default:
+    - attribute: pad_type
+      subtitle: Pad
+    - attribute: cleaning_mode
+      subtitle: Mode
+    - entity_id: sensor.braava_240_volume
+      subtitle: Volume
+  cleaning:
+    - attribute: runtime_minutes
+      subtitle: Runtime
+      unit: min
+    - attribute: pad_type
+      subtitle: Pad
+shortcuts:
+  - name: Spot
+    icon: mdi:target
+    service: select.select_option
+    service_data:
+      entity_id: select.braava_240_cleaning_mode
+      option: spot
+  - name: Normal
+    icon: mdi:map-marker-path
+    service: select.select_option
+    service_data:
+      entity_id: select.braava_240_cleaning_mode
+      option: normal
+```
 
 ## Supported Robot Commands
 

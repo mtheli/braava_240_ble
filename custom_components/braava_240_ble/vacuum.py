@@ -34,6 +34,7 @@ _SUPPORTED_FEATURES = (
     VacuumEntityFeature.START
     | VacuumEntityFeature.STOP
     | VacuumEntityFeature.STATE
+    | VacuumEntityFeature.LOCATE
 )
 
 
@@ -98,6 +99,10 @@ class BraavaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
         voltage = self.coordinator.data.get("current_voltage")
         if voltage is not None:
             attrs["battery_voltage_v"] = round(voltage, 2)
+        pad = self.coordinator.data.get("pad_type_str")
+        if pad is not None:
+            attrs["pad_type"] = pad
+        attrs["cleaning_mode"] = self.coordinator.cleaning_mode
         return attrs
 
     # ── Commands ───────────────────────────────────────────────────────────────
@@ -109,3 +114,7 @@ class BraavaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
     async def async_stop(self, **kwargs) -> None:
         """Stop / terminate the current cleaning mission."""
         await self.coordinator.async_stop_cleaning()
+
+    async def async_locate(self, **kwargs) -> None:
+        """Locate the robot by triggering an audible beep."""
+        await self.coordinator.async_beep()
