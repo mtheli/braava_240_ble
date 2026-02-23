@@ -122,6 +122,10 @@ class Braava240ConfigFlow(ConfigFlow, domain=DOMAIN):
         finally:
             await client.disconnect()
 
+        # Discard meaningless placeholder serial numbers
+        if self._fetched_serial_number and self._fetched_serial_number.strip("0") == "":
+            self._fetched_serial_number = None
+
     def _get_characteristics_text(self) -> str:
         """Format characteristics status for display."""
         labels = {

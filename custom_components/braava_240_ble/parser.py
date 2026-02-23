@@ -22,6 +22,8 @@ from .const import (
     CMD_GET_BATTERY,
     CMD_GET_PAD_TYPE,
     CMD_GET_STATUS,
+    CMD_GET_VOLUME,
+    CMD_GET_WETNESS,
     CMD_HEADER_SIZE,
     DATA_CHAR_CHUNK_SIZE,
     MISSION_STATUS_MAP,
@@ -29,6 +31,7 @@ from .const import (
     ROBOT_STATE_MAP,
     ROBOT_STATE_MISSION_ERROR,
     USER_STOP_MISSIONS,
+    WETNESS_LEVEL_MAP,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -100,6 +103,10 @@ def parse_response(data: bytes) -> dict | None:
         return _parse_battery(data, payload_offset)
     if cmd == CMD_GET_PAD_TYPE:
         return _parse_pad_type(data, payload_offset)
+    if cmd == CMD_GET_VOLUME:
+        return _parse_volume(data, payload_offset)
+    if cmd == CMD_GET_WETNESS:
+        return _parse_wetness(data, payload_offset)
 
     _LOGGER.debug(
         "Unknown response CMD 0x%02x (%d bytes): %s",
@@ -215,4 +222,59 @@ def _parse_pad_type(data: bytes, offset: int) -> dict | None:
         "type":         "pad_type",
         "pad_type":     pad_type,
         "pad_type_str": pad_str,
+    }
+
+
+def _parse_volume(data: bytes, offset: int) -> dict | None:
+    """Parse GET_VOLUME response payload (1 byte).
+
+    Payload layout (from ALRobotCommands.java GET_VOLUME_RESPONSE):
+        Byte 0: level – volume level
+    """
+    if len(data) < offset + 1:
+        _LOGGER.debug("GET_VOLUME response too short: %d bytes", len(data))
+        return None
+
+    level = data[offset]
+    _LOGGER.debug("Volume: %d", level)
+
+    return {
+        "type":   "volume",
+        "volume": level,
+    }
+
+
+def _parse_wetness(data: bytes, offset: int) -> dict | None:
+    """Parse GET_WETNESS response payload (4 bytes).
+
+    Payload layout (from ALRobotCommands.java GET_WETNESS_RESPONSE):
+        Byte 0: wet_level           – disposable wet pad
+        Byte 1: damp_level          – disposable damp pad
+        Byte 2: reusable_wet_level  – reusable wet pad
+        Byte 3: reusable_damp_level – reusable damp pad
+    """
+    if len(data) < offset + 4:
+        _LOGGER.debug("GET_WETNESS response too short: %d bytes", len(data))
+        return None
+
+    wet   = data[offset]
+    damp  = data[offset + 1]
+    r_wet = data[offset + 2]
+    r_damp = data[offset + 3]
+
+    _LOGGER.debug(
+        "Wetness: wet=%d damp=%d reusable_wet=%d reusable_damp=%d",
+        wet, damp, r_wet, r_damp,
+    )
+
+    return {
+        "type": "wetness",
+        "wetness_wet":            wet,
+        "wetness_damp":           damp,
+        "wetness_reusable_wet":   r_wet,
+        "wetness_reusable_damp":  r_damp,
+        "wetness_wet_str":           WETNESS_LEVEL_MAP.get(wet, f"unknown_{wet}"),
+        "wetness_damp_str":          WETNESS_LEVEL_MAP.get(damp, f"unknown_{damp}"),
+        "wetness_reusable_wet_str":  WETNESS_LEVEL_MAP.get(r_wet, f"unknown_{r_wet}"),
+        "wetness_reusable_damp_str": WETNESS_LEVEL_MAP.get(r_damp, f"unknown_{r_damp}"),
     }

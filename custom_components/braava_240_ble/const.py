@@ -42,9 +42,14 @@ TSTATUS_IPCPEND = -2   # 0xFE unsigned – keep polling cc3
 # ── Robot command IDs (from ALRobotCommands.java) ─────────────────────────────
 # These are packed into command packets and sent via the transport layer.
 CMD_NOP            = 0x00
+CMD_GET_WETNESS    = 0x01  # Query wetness levels for all pad types (4-byte response)
+CMD_SET_WETNESS    = 0x02  # Set wetness level (payload: [type, level])
+CMD_GET_VOLUME     = 0x03  # Query current volume level (1-byte response)
+CMD_SET_VOLUME     = 0x04  # Set volume level (1-byte payload)
 CMD_REMOTE_CONTROL = 0x09  # Enable/disable remote control mode (payload: 1=on, 0=off)
 CMD_BEEP           = 0x0D  # Trigger an audible beep (requires remote control mode)
-CMD_START_CLEAN    = 0x10  # Initiates a cleaning mission
+CMD_SPOT_CLEAN     = 0x0E  # Start spot cleaning (limited area)
+CMD_START_CLEAN    = 0x10  # Initiates a full-room cleaning mission
 CMD_STOP_CLEAN   = 0x11  # Terminates an active cleaning mission
 CMD_GET_STATUS   = 0x12  # Query robot state + mission status
 CMD_GET_BATTERY  = 0x13  # Query battery level and voltages
@@ -131,6 +136,34 @@ PAD_TYPE_MAP: dict[int, str] = {
     7: "plate",
     8: "all",
     9: "no_pad",
+}
+
+# ── Wetness levels (from RobotPadWetnessLevel.java) ─────────────────────────
+WETNESS_LEVEL_LOW      = 0  # Damp
+WETNESS_LEVEL_MEDIUM   = 1  # Moderate
+WETNESS_LEVEL_HIGH     = 2  # Wet
+
+WETNESS_LEVEL_MAP: dict[int, str] = {
+    WETNESS_LEVEL_LOW:    "low",
+    WETNESS_LEVEL_MEDIUM: "medium",
+    WETNESS_LEVEL_HIGH:   "high",
+}
+
+WETNESS_LEVEL_REVERSE: dict[str, int] = {v: k for k, v in WETNESS_LEVEL_MAP.items()}
+
+# Wetness pad type selectors for SET_WETNESS command
+WETNESS_TYPE_WET            = 0    # Disposable wet pad
+WETNESS_TYPE_DAMP           = 1    # Disposable damp pad
+WETNESS_TYPE_REUSABLE_WET   = 2    # Reusable wet pad
+WETNESS_TYPE_REUSABLE_DAMP  = 3    # Reusable damp pad
+WETNESS_TYPE_ALL            = 127  # All pad types
+
+# Default wetness levels (from app "Restore Defaults")
+WETNESS_DEFAULTS: dict[int, int] = {
+    WETNESS_TYPE_WET:           WETNESS_LEVEL_MEDIUM,
+    WETNESS_TYPE_DAMP:          WETNESS_LEVEL_MEDIUM,
+    WETNESS_TYPE_REUSABLE_WET:  WETNESS_LEVEL_MEDIUM,
+    WETNESS_TYPE_REUSABLE_DAMP: WETNESS_LEVEL_MEDIUM,
 }
 
 # ── Standard BLE GATT Device Information Service (UUID 0x180A) ────────────

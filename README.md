@@ -12,9 +12,13 @@ Custom Home Assistant integration to control the iRobot Braava 240 mopping robot
 
 - **Auto-discovery** – The Braava 240 is automatically detected when powered on and within BLE range
 - **Start/stop cleaning** – Via the vacuum entity in Home Assistant
+- **Cleaning mode** – Normal (full room) or Spot cleaning
 - **Battery level** – Calculated from actual charge current (more reliable than the internal raw value)
 - **Robot status** – Ready, Cleaning, Error
 - **Pad detection** – Shows the currently attached pad type (wet, damp, dry, reusable, etc.)
+- **Wetness control** – Per-pad-type wetness levels (Low / Medium / High)
+- **Volume control** – Adjustable speaker volume (0–100)
+- **Find robot** – Beep button to locate the robot
 - **Device information** – Serial number, firmware version, hardware revision via GATT Device Information Service
 - **Power off** – Power-off button to fully shut down the robot (disabled by default)
 - **Multilingual** – English and German
@@ -26,9 +30,17 @@ Custom Home Assistant integration to control the iRobot Braava 240 mopping robot
 | Braava 240 | Vacuum | Start/stop cleaning |
 | Status | Sensor | Robot state (Ready / Cleaning / Error) |
 | Battery | Sensor | Battery level in percent |
-| Pad | Sensor | Detected pad type |
+| Cleaning Pad | Sensor | Detected pad type |
 | Connected | Binary Sensor | BLE connection status |
 | Cleaning | Binary Sensor | Active cleaning yes/no |
+| Cleaning Mode | Select | Normal / Spot |
+| Wetness Wet Pad | Select | Wetness level for wet pads |
+| Wetness Damp Pad | Select | Wetness level for damp pads |
+| Wetness Reusable Wet | Select | Wetness level for reusable wet pads |
+| Wetness Reusable Damp | Select | Wetness level for reusable damp pads |
+| Volume | Number | Speaker volume (0–100) |
+| Beep | Button | Trigger an audible beep to locate the robot |
+| Reset Wetness | Button | Reset all wetness levels to defaults (Medium) |
 | Power Off | Button | Fully shut down the robot (must be manually enabled) |
 
 ## Installation
@@ -69,6 +81,39 @@ The robot uses a two-layer GATT protocol:
 
 - **Transport layer** – Manages data transfer via two BLE characteristics (command + status)
 - **Robot command layer** – The actual commands (query status, start cleaning, etc.) are transferred as packets via a data characteristic
+
+## Supported Robot Commands
+
+The Braava 240 firmware exposes 26 robot commands. This integration currently uses 14 of them:
+
+| ID | Command | Status | Description |
+|----|---------|--------|-------------|
+| 0x00 | NOP | Implemented | No operation (transport layer) |
+| 0x01 | GET_WETNESS | Implemented | Query wetness levels for all pad types |
+| 0x02 | SET_WETNESS | Implemented | Set wetness level per pad type |
+| 0x03 | GET_VOLUME | Implemented | Query speaker volume |
+| 0x04 | SET_VOLUME | Implemented | Set speaker volume |
+| 0x05 | SET_NAME | – | Set robot name |
+| 0x06 | GET_BBK_DATA | – | Lifetime statistics (missions, runtime, errors) |
+| 0x07 | GET_ROOM_CONFINE | – | Query room confinement setting |
+| 0x08 | SET_ROOM_CONFINE | – | Enable/disable room confinement |
+| 0x09 | REMOTE_CONTROL | Implemented | Enable/disable remote control mode |
+| 0x0A | JOYSTICK | – | Manual joystick control |
+| 0x0B | SPRAY | – | Trigger water spray |
+| 0x0C | VIBRATE | – | Enable/disable vibration |
+| 0x0D | BEEP | Implemented | Trigger audible beep |
+| 0x0E | SPOT_CLEAN | Implemented | Start spot cleaning |
+| 0x0F | GET_APP_DATA | – | Query mission data (runtime, ending reason) |
+| 0x10 | START_CLEAN | Implemented | Start full-room cleaning |
+| 0x11 | STOP_CLEAN | Implemented | Stop active cleaning |
+| 0x12 | GET_STATUS | Implemented | Query robot state and mission status |
+| 0x13 | GET_BATTERY | Implemented | Query battery level and voltages |
+| 0x14 | GET_PAD_TYPE | Implemented | Query attached pad type |
+| 0x15 | POWER_OFF | Implemented | Power off the robot |
+| 0x16 | GET_ROBOT_REGISTERED | – | Check app registration status |
+| 0x17 | SET_ROBOT_REGISTERED | – | Set app registration status |
+| 0x18 | GET_NAME | – | Query robot name |
+| 0x19 | FACTORY_RESET | – | Factory reset the robot |
 
 ## License
 

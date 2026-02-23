@@ -51,10 +51,16 @@ from .const import (
     CHAR_UUID_STATUS,
     CMD_BEEP,
     CMD_GET_BATTERY,
-    CMD_REMOTE_CONTROL,
     CMD_GET_PAD_TYPE,
     CMD_GET_STATUS,
+    CMD_GET_VOLUME,
+    CMD_GET_WETNESS,
+    CMD_REMOTE_CONTROL,
+    CMD_SET_VOLUME,
+    CMD_SET_WETNESS,
     CMD_POWER_OFF,
+    WETNESS_DEFAULTS,
+    CMD_SPOT_CLEAN,
     CMD_START_CLEAN,
     CMD_STOP_CLEAN,
     DATA_CHAR_CHUNK_SIZE,
@@ -89,7 +95,7 @@ _BACKOFF_MAX = 300  # seconds – maximum reconnect back-off
 _XFER_CHUNK_DELAY = 0.07   # seconds between data chunks (XFER_DELAY_INITIAL)
 _BLOCK_END_DELAY  = 0.5    # seconds after block end (DELAY_BETWEEN_BLOCKS)
 _BUSY_POLL_DELAY  = 0.05   # seconds between busy-status re-reads
-_BUSY_MAX_RETRIES = 30     # max busy-wait iterations (~1.5s timeout)
+_BUSY_MAX_RETRIES = 60     # max busy-wait iterations (~3s timeout)
 
 
 class BraavaProtocolError(Exception):
@@ -125,6 +131,9 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
         self.hw_version: str | None = hw_version
         self.serial_number: str | None = serial_number
         self.model_number: str | None = None
+
+        # Cleaning mode selection ("normal" or "spot")
+        self.cleaning_mode: str = "normal"
 
         # BLE client
         self._client: BleakClient | None = None
@@ -545,6 +554,32 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
             except Exception as err:
                 _LOGGER.debug("GET_PAD_TYPE error: %s", err)
 
+            # GET_VOLUME
+            try:
+                raw = await self._send_robot_command(CMD_GET_VOLUME)
+                if raw:
+                    parsed = parse_response(raw)
+                    if parsed:
+                        _apply(new_data, parsed)
+                        received += 1
+            except BraavaProtocolError as err:
+                _LOGGER.debug("GET_VOLUME failed: %s", err)
+            except Exception as err:
+                _LOGGER.debug("GET_VOLUME error: %s", err)
+
+            # GET_WETNESS
+            try:
+                raw = await self._send_robot_command(CMD_GET_WETNESS)
+                if raw:
+                    parsed = parse_response(raw)
+                    if parsed:
+                        _apply(new_data, parsed)
+                        received += 1
+            except BraavaProtocolError as err:
+                _LOGGER.debug("GET_WETNESS failed: %s", err)
+            except Exception as err:
+                _LOGGER.debug("GET_WETNESS error: %s", err)
+
         if received > 0 or new_data != self.data:
             self.async_set_updated_data(new_data)
         else:
@@ -553,17 +588,30 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
 
     # ── Control commands ───────────────────────────────────────────────────────
 
+    async def _send_with_retry(self, cmd_id: int, payload: bytes = b"") -> bytes | None:
+        """Send a robot command with one retry on BUSY timeout."""
+        try:
+            return await self._send_robot_command(cmd_id, payload)
+        except BraavaProtocolError:
+            _LOGGER.debug("Command 0x%02x busy, retrying after 1s", cmd_id)
+            await asyncio.sleep(1.0)
+            return await self._send_robot_command(cmd_id, payload)
+
     async def async_start_cleaning(self) -> None:
-        """Send START_CLEAN command (0x10)."""
-        await self._send_robot_command(CMD_START_CLEAN)
-        _LOGGER.info("START_CLEAN sent to Braava 240")
+        """Start cleaning using the selected mode (normal or spot)."""
+        if self.cleaning_mode == "spot":
+            await self._send_with_retry(CMD_SPOT_CLEAN)
+            _LOGGER.info("SPOT_CLEAN sent to Braava 240")
+        else:
+            await self._send_with_retry(CMD_START_CLEAN)
+            _LOGGER.info("START_CLEAN sent to Braava 240")
         # Trigger an immediate status poll so the UI updates promptly
         await asyncio.sleep(1.0)
         await self._poll()
 
     async def async_stop_cleaning(self) -> None:
         """Send STOP_CLEAN command (0x11)."""
-        await self._send_robot_command(CMD_STOP_CLEAN)
+        await self._send_with_retry(CMD_STOP_CLEAN)
         _LOGGER.info("STOP_CLEAN sent to Braava 240")
         await asyncio.sleep(1.0)
         await self._poll()
@@ -576,6 +624,22 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.info("BEEP sent to Braava 240")
         finally:
             await self._send_robot_command(CMD_REMOTE_CONTROL, payload=bytes([0]))
+
+    async def async_set_volume(self, level: int) -> None:
+        """Send SET_VOLUME command (0x04)."""
+        await self._send_robot_command(CMD_SET_VOLUME, payload=bytes([level]))
+        _LOGGER.info("SET_VOLUME(%d) sent to Braava 240", level)
+
+    async def async_set_wetness(self, pad_type: int, level: int) -> None:
+        """Send SET_WETNESS command (0x02). payload: [type, level]."""
+        await self._send_robot_command(CMD_SET_WETNESS, payload=bytes([pad_type, level]))
+        _LOGGER.info("SET_WETNESS(type=%d, level=%d) sent to Braava 240", pad_type, level)
+
+    async def async_reset_wetness(self) -> None:
+        """Reset all wetness levels to defaults (medium)."""
+        for pad_type, level in WETNESS_DEFAULTS.items():
+            await self.async_set_wetness(pad_type, level)
+        _LOGGER.info("Wetness levels reset to defaults")
 
     async def async_power_off(self) -> None:
         """Send POWER_OFF command (0x15). The robot will shut down completely."""
@@ -612,4 +676,17 @@ def _apply(data: dict, parsed: dict) -> None:
         data.update({
             "pad_type":     parsed["pad_type"],
             "pad_type_str": parsed["pad_type_str"],
+        })
+    elif ptype == "volume":
+        data["volume"] = parsed["volume"]
+    elif ptype == "wetness":
+        data.update({
+            "wetness_wet":            parsed["wetness_wet"],
+            "wetness_damp":           parsed["wetness_damp"],
+            "wetness_reusable_wet":   parsed["wetness_reusable_wet"],
+            "wetness_reusable_damp":  parsed["wetness_reusable_damp"],
+            "wetness_wet_str":           parsed["wetness_wet_str"],
+            "wetness_damp_str":          parsed["wetness_damp_str"],
+            "wetness_reusable_wet_str":  parsed["wetness_reusable_wet_str"],
+            "wetness_reusable_damp_str": parsed["wetness_reusable_damp_str"],
         })

@@ -50,9 +50,42 @@
         }
       }
     },
+    "select": {
+      "cleaning_mode": {
+        "name": "Cleaning Mode",
+        "state": {
+          "normal": "Normal",
+          "spot": "Spot"
+        }
+      },
+      "wetness_wet": {
+        "name": "Wetness Wet Pad",
+        "state": { "low": "Low", "medium": "Medium", "high": "High" }
+      },
+      "wetness_damp": {
+        "name": "Wetness Damp Pad",
+        "state": { "low": "Low", "medium": "Medium", "high": "High" }
+      },
+      "wetness_reusable_wet": {
+        "name": "Wetness Reusable Wet",
+        "state": { "low": "Low", "medium": "Medium", "high": "High" }
+      },
+      "wetness_reusable_damp": {
+        "name": "Wetness Reusable Damp",
+        "state": { "low": "Low", "medium": "Medium", "high": "High" }
+      }
+    },
+    "number": {
+      "volume": {
+        "name": "Volume"
+      }
+    },
     "button": {
       "beep": {
         "name": "Beep"
+      },
+      "reset_wetness": {
+        "name": "Reset Wetness"
       },
       "power_off": {
         "name": "Power Off"
