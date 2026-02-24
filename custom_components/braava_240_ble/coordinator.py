@@ -50,6 +50,7 @@ from .const import (
     CHAR_UUID_HEARTBEAT,
     CHAR_UUID_STATUS,
     CMD_BEEP,
+    CMD_GET_BBK_DATA,
     CMD_GET_BATTERY,
     CMD_GET_PAD_TYPE,
     CMD_GET_STATUS,
@@ -88,7 +89,13 @@ from .const import (
     TSTATUS_IPCPEND,
     TSTATUS_OK,
 )
-from .parser import build_robot_packet, pad_to_chunk_boundary, parse_response
+from .parser import (
+    build_robot_packet,
+    pad_to_chunk_boundary,
+    parse_bbk_life1,
+    parse_bbk_life2,
+    parse_response,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -147,6 +154,10 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
         self._live_task: asyncio.Task | None = None
         self._connection_lock = asyncio.Lock()
         self._command_lock = asyncio.Lock()  # serializes robot command transactions
+
+        # One-time reads (name, BBK stats) are deferred until after the first
+        # _poll() so that status/battery entities appear without waiting.
+        self._one_time_reads_pending = False
 
         # Event signalled when the robot advertises (for fast reconnect)
         self._device_available = asyncio.Event()
@@ -223,6 +234,14 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
                 # ── Poll robot ─────────────────────────────────────────────────
                 await self._poll()
 
+                # ── Deferred one-time reads (after first poll) ────────────────
+                if self._one_time_reads_pending:
+                    self._one_time_reads_pending = False
+                    await self._read_robot_name()
+                    await self._read_bbk_data()
+                    # Push the new data so name/BBK sensors appear immediately
+                    self.async_set_updated_data(self.data)
+
                 # Adaptive interval: poll more frequently while cleaning
                 robot_state = self.data.get("robot_state")
                 interval = (
@@ -292,8 +311,9 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
         if not self.device_info_read:
             await self._read_gatt_device_info()
 
-        # Read robot name once after connect (rarely changes)
-        await self._read_robot_name()
+        # Robot name + lifetime stats are read after the first _poll() cycle
+        # so that status/battery entities appear without the extra delay.
+        self._one_time_reads_pending = True
 
     async def _read_gatt_device_info(self) -> None:
         """Read standard GATT Device Information Service characteristics."""
@@ -333,6 +353,32 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
                     _LOGGER.info("Robot name: %s", parsed["robot_name"])
         except BraavaProtocolError as err:
             _LOGGER.debug("GET_NAME failed: %s", err)
+
+    async def _read_bbk_data(self) -> None:
+        """Read lifetime statistics via GET_BBK_DATA groups 1 and 2."""
+        # Group 1: mission counts + average duration
+        try:
+            raw = await self._send_robot_command(
+                CMD_GET_BBK_DATA, payload=bytes([1])
+            )
+            if raw:
+                parsed = parse_bbk_life1(raw)
+                if parsed:
+                    _apply(self.data, parsed)
+        except BraavaProtocolError as err:
+            _LOGGER.debug("GET_BBK_DATA group 1 failed: %s", err)
+
+        # Group 2: total runtime
+        try:
+            raw = await self._send_robot_command(
+                CMD_GET_BBK_DATA, payload=bytes([2])
+            )
+            if raw:
+                parsed = parse_bbk_life2(raw)
+                if parsed:
+                    _apply(self.data, parsed)
+        except BraavaProtocolError as err:
+            _LOGGER.debug("GET_BBK_DATA group 2 failed: %s", err)
 
     async def _disconnect(self) -> None:
         """Disconnect cleanly."""
@@ -740,3 +786,13 @@ def _apply(data: dict, parsed: dict) -> None:
         data["robot_name"] = parsed["robot_name"]
     elif ptype == "room_confine":
         data["room_confine"] = parsed["room_confine"]
+    elif ptype == "bbk_life1":
+        data.update({
+            "total_missions": parsed["total_missions"],
+            "successful_missions": parsed["successful_missions"],
+            "failed_missions": parsed["failed_missions"],
+            "average_mission_minutes": parsed["average_mission_minutes"],
+        })
+    elif ptype == "bbk_life2":
+        runtime_min = parsed["total_cleaning_minutes"]
+        data["total_cleaning_hours"] = round(runtime_min / 60, 1)

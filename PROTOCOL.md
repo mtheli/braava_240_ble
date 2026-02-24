@@ -26,6 +26,8 @@ This is NOT a simple write-command/read-notification pattern. Each command goes 
 | cc3 (Status) | `e7add780-b042-4876-aae1-112855353cc3` | Read | Transport status. Read after each cc2 write. **No notifications.** |
 | cc4 (Heartbeat) | `e7add780-b042-4876-aae1-112855353cc4` | Notify | Keepalive counter. The **only** characteristic that uses notifications. |
 
+Heartbeat notifications arrive as 4 bytes: a little-endian uint32 counter that increments every ~2.5 s. Example sequence: `15 01 00 00` → `16 01 00 00` → `17 01 00 00` (counter 277, 278, 279).
+
 ### GATT Device Information Service (UUID 0x180A)
 
 | Characteristic | UUID |
@@ -59,7 +61,7 @@ Byte 3:    status (signed: if >= 128, subtract 256)
 
 | ID | Name | Parameter | Description |
 |----|------|-----------|-------------|
-| 1 | RESET_STATE | `0x10000` | Reset the transport state machine |
+| 1 | RESET_STATE | `0x10000` | Reset the transport state machine. Response param is a firmware identifier (e.g. `0x240614`). |
 | 4 | BLOCK_END | block checksum | Signal end of a data block |
 | 5 | XFER_END | 0 | Signal end of a data transfer |
 | 8 | SEND_CMD | packet size | Execute the transferred robot command |
@@ -113,6 +115,51 @@ The full sequence to send a robot command and read its response:
 
 8. DATA_XFER_END (param=packet_size)
    → Write to cc2, read cc3 (status not checked)
+```
+
+### Annotated Example: GET_STATUS (0x12)
+
+A complete transport sequence captured from a real device. The robot command packet is `12 03 15` (cmd=0x12, size=3, checksum=0x15), zero-padded to 20 bytes.
+
+```
+Step 1 — RESET_STATE
+  cc2 ← 00 00 01 01       (cmd=1, param=0x010000)
+  cc3 → 14 06 24 00       (param=0x240614, status=0 OK)
+
+Step 2 — DATA_XFER_START (padded_length=20)
+  cc2 ← 14 00 00 0d       (cmd=13, param=0x000014=20)
+  cc3 → 00 00 00 00       (status=0 OK)
+
+Step 3 — Block transfer (1 chunk × 20 bytes)
+  cc1 ← 12 03 15 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+
+Step 4 — BLOCK_END (checksum=0x2a)
+  cc2 ← 2a 00 00 04       (cmd=4, param=0x00002a=42)
+  cc3 → 00 00 00 00       (status=0 OK)
+  [500 ms delay]
+
+Step 5 — XFER_END
+  cc2 ← 00 00 00 05       (cmd=5, param=0)
+  cc3 → 00 00 00 03       (status=3 BADCMD — normal, ignored)
+
+Step 6 — SEND_CMD (packet_size=3)
+  cc2 ← 03 00 00 08       (cmd=8, param=0x000003=3)
+  cc3 → 06 00 00 00       (param=0x000006=6, status=0 OK)
+  → bytes_to_receive = 6
+
+Step 7 — Read response (1 chunk × 6 bytes)
+  STAGE_DATA (offset=0, count=6):
+  cc2 ← 06 00 00 0c       (cmd=12, param=0x000006)
+  cc3 → 00 00 00 00       (status=0 OK)
+  cc1 → 12 06 18 00 00 00 (6 bytes read)
+
+Step 8 — DATA_XFER_END
+  cc2 ← 03 00 00 0e       (cmd=14, param=0x000003=3)
+  cc3 → 00 00 00 00       (status=0 OK)
+
+Result: 12 06 18 00 00 00
+  → cmd=0x12, size=6, checksum=0x18
+  → payload: 00 00 00 → runtime=0min, state=idle(0), mission=undefined(0)
 ```
 
 ### Timing
@@ -193,6 +240,9 @@ For commands without payload, the total size is 3 (header only). The packet is z
 | 2 | reusable_wet_level | byte | 0=Low, 1=Medium, 2=High |
 | 3 | reusable_damp_level | byte | 0=Low, 1=Medium, 2=High |
 
+Example response: `01 07 10 02 02 02 02`
+→ cmd=0x01, size=7, payload: `02 02 02 02` → all levels = High (2)
+
 #### SET_WETNESS (0x02)
 
 **Payload:** 2 bytes
@@ -209,6 +259,9 @@ For commands without payload, the total size is 3 (header only). The packet is z
 | Offset | Field | Type | Range |
 |--------|-------|------|-------|
 | 0 | level | byte | 0–100 |
+
+Example response: `03 04 2f 28`
+→ cmd=0x03, size=4, payload: `28` → volume = 40
 
 #### SET_VOLUME (0x04)
 
@@ -257,7 +310,9 @@ Lifetime statistics, queried in 3 groups. The group number is sent as a 1-byte p
 ##### Group 1: Lifetime Statistics (Part 1)
 
 **Payload:** `[0x01]`
-**Response:** 60 bytes — mixed uint16/uint32 little-endian
+**Response:** 60 bytes (Java source) / 86 bytes (observed firmware) — mixed uint16/uint32 little-endian
+
+The first 60 bytes match the Java source layout. The firmware appends additional undocumented bytes which do not affect the known fields.
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
@@ -285,25 +340,72 @@ Lifetime statistics, queried in 3 groups. The group number is sent as a 1-byte p
 | 54 | N_MISSIONS_STARTED | uint16 | Total missions started |
 | 56 | N_MISSIONS_COMPLETED | uint16 | Total missions completed |
 | 58 | N_MISSIONS_FAILED | uint16 | Total missions failed |
+| 60+ | (extra data) | — | Firmware returns 26 extra bytes (undocumented) |
+
+Example response (89 bytes total, truncated):
+```
+06 59 ae
+  05 00              N_WET = 5
+  1b 00 00 00        RUNTIME_WET = 27 min
+  03 00              N_WET_FAILED = 3
+  01 00              N_DAMP = 1
+  01 00 00 00        RUNTIME_DAMP = 1 min
+  00 00              N_DAMP_FAILED = 0
+  00 00              N_DRY = 0
+  00 00 00 00        RUNTIME_DRY = 0 min
+  00 00              N_DRY_FAILED = 0
+  53 01              N_MICRO = 339
+  1b 15 00 00        RUNTIME_MICRO = 5403 min
+  48 00              N_MICRO_FAILED = 72
+  0f 00              MISSION_AVG_MINUTES = 15
+  5c 57 00 00        N_RIGHT_BUMPER_CLICKS = 22364
+  69 56 00 00        N_LEFT_BUMPER_CLICKS = 22121
+  18 03              N_FRONT_CLIFFS = 792
+  7f 02              N_REAR_CLIFFS = 639
+  0a 00              N_WHEEL_DROPS = 10
+  ba 00              N_KIDNAPS = 186
+  01 00              N_OVERCURRENT = 1
+  01 00              N_BATTERY_OVERTEMPS = 1
+  7d 01              N_MISSIONS_STARTED = 381
+  0d 01              N_MISSIONS_COMPLETED = 269
+  70 00              N_MISSIONS_FAILED = 112
+  04 01 04 01 ...    (26 extra bytes, undocumented)
+```
 
 ##### Group 2: Lifetime Statistics (Part 2)
 
 **Payload:** `[0x02]`
-**Response:** 88 bytes — mixed uint16/uint32 little-endian
+**Response:** 88 bytes (Java source) / 100 bytes (observed firmware) — mixed uint16/uint32 little-endian
 
-| Offset | Field | Type | Description |
-|--------|-------|------|-------------|
-| 0–18 | PANIC_ID_0..9 | 10 × uint16 | Last 10 panic error codes |
-| 20 | N_BLE_CONNECTIONS | uint16 | Total BLE connections |
-| 22 | N_ATTEMPTED_UPDATES | uint16 | Firmware update attempts |
-| 24 | N_VIRTUAL_WALL_MODE | uint16 | Virtual wall mode activations |
-| 26–44 | PAUSE_ID_0..9 | 10 × uint16 | Last 10 pause reason codes |
-| 46 | AMT_RESULTS | uint16 | AMT test results |
-| 48 | ONTIME_MINUTES | uint32 | Total power-on time (min) |
-| 52 | RUNTIME_MINUTES | uint32 | Total cleaning runtime (min) |
-| 56 | N_PAD_WARNINGS | uint16 | Pad warnings |
-| 58 | N_PAD_ERRORS | uint16 | Pad errors |
-| 60–84 | UNUSED_A..G | 7 × uint32 | Reserved |
+> **Firmware discrepancy:** The Braava 240 firmware returns a different field order than the decompiled Java source (ALRobotCommands.java). The Java source places ONTIME_MINUTES at offset 48 and RUNTIME_MINUTES at offset 52. The actual firmware places them at offsets 22 and 26, immediately after N_BLE_CONNECTIONS. The table below shows the **empirically verified** layout.
+
+Verified fields:
+
+| Offset | Field | Type | Description | Verified |
+|--------|-------|------|-------------|----------|
+| 0–18 | PANIC_ID_0..9 | 10 × uint16 | Last 10 panic error codes | Yes |
+| 20 | N_BLE_CONNECTIONS | uint16 | Total BLE connections | Yes |
+| 22 | ONTIME_MINUTES | uint32 | Total power-on time (min) | Yes |
+| 26 | RUNTIME_MINUTES | uint32 | Total cleaning runtime (min) | Yes |
+| 30–99 | (remaining fields) | mixed | Layout differs from Java source — not individually verified | No |
+
+For reference, the Java source describes these additional fields (at different offsets than actual firmware): N_ATTEMPTED_UPDATES, N_VIRTUAL_WALL_MODE, PAUSE_ID_0..9, AMT_RESULTS, N_PAD_WARNINGS, N_PAD_ERRORS.
+
+Example response (103 bytes total):
+```
+06 67 0d
+  22 01              PANIC_ID_0 = 290
+  22 01              PANIC_ID_1 = 290
+  22 01 22 01 22 01  PANIC_ID_2..4 = 290
+  22 01 22 01 22 01  PANIC_ID_5..7 = 290
+  22 01              PANIC_ID_8 = 290
+  13 00              PANIC_ID_9 = 19
+  11 00              N_BLE_CONNECTIONS = 17
+  d5 19 00 00        ONTIME_MINUTES = 6613 (~110.2 h)
+  37 15 00 00        RUNTIME_MINUTES = 5431 (~90.5 h)
+  00 00 00 00 26 00  (remaining fields...)
+  05 33 03 33 ...
+```
 
 #### GET_ROOM_CONFINE (0x07)
 
@@ -312,6 +414,9 @@ Lifetime statistics, queried in 3 groups. The group number is sent as a 1-byte p
 | Offset | Field | Values |
 |--------|-------|--------|
 | 0 | enabled | 0=off, 1=on |
+
+Example response: `07 04 0b 00`
+→ cmd=0x07, size=4, payload: `00` → room confinement off
 
 #### SET_ROOM_CONFINE (0x08)
 
@@ -409,6 +514,9 @@ Robot state mapping:
 - `2` → idle (mission ended successfully, returned to home)
 - `3` → error (mission ended with error — but see quirks)
 
+Example response: `12 06 18 00 00 00`
+→ cmd=0x12, size=6, payload: `00 00 00` → runtime=0 min, state=idle(0), mission=undefined(0)
+
 #### GET_BATTERY (0x13)
 
 **Response:** 11 bytes
@@ -427,6 +535,12 @@ Divide voltage values by 1000 for volts. Calculate reliable battery percentage a
 battery_pct = min(100, round(current_charge / max_charge * 100))
 ```
 
+Example response: `13 0e ec 03 80 0c 04 10 d5 0d 34 08 06 04`
+→ cmd=0x13, size=14, payload (11 bytes):
+  - level=3 (unreliable), min_v=0x0C80=3200 mV, max_v=0x1004=4100 mV
+  - cur_v=0x0DD5=3541 mV (3.54 V), max_chg=0x0834=2100 mAh
+  - cur_chg=0x0406=1030 mAh → battery = 1030/2100 = 49%
+
 #### GET_PAD_TYPE (0x14)
 
 **Response:** 1 byte
@@ -443,6 +557,9 @@ battery_pct = min(100, round(current_charge / max_charge * 100))
 | 7 | Plate |
 | 8 | All |
 | 9 | No Pad |
+
+Example response: `14 04 19 01`
+→ cmd=0x14, size=4, payload: `01` → pad_type = Damp (1)
 
 #### POWER_OFF (0x15)
 
@@ -470,6 +587,9 @@ Internal registration status. No practical use for third-party integrations.
 
 **Response:** 20 bytes — null-terminated UTF-8 string, zero-padded
 
+Example response: `18 17 96 57 69 73 63 68 69 00 00 00 00 00 00 00 00 00 00 00 00 00 00`
+→ cmd=0x18, size=23, payload: `57 69 73 63 68 69 00 ...` → "Wischi"
+
 #### FACTORY_RESET (0x19)
 
 No payload. Performs a full factory reset.
@@ -486,6 +606,21 @@ No payload. Performs a full factory reset.
 | cc3 has no notifications | BlueZ correctly rejects start_notify on read-only characteristic | Always use explicit read after cc2 write |
 | cc4 is the only notifier | Heartbeat keepalive counter; no data payloads | Subscribe for connection keepalive only |
 | REMOTE_CONTROL mode | JOYSTICK, SPRAY, VIBRATE, BEEP require it | Enable before, disable after (try/finally) |
+| BBK Group 2 field order | ONTIME/RUNTIME at firmware offsets 22/26, not 48/52 as in Java source | Use empirically verified offsets (see GET_BBK_DATA section) |
+| BBK response sizes | Group 1: 86 bytes payload (not 60), Group 2: 100 bytes (not 88) | Extra bytes appended; parse only known offsets |
+
+## Connection Timing
+
+Observed timing from a real BLE connection at RSSI -78 dBm:
+
+| Phase | Duration | Description |
+|-------|----------|-------------|
+| BLE connect | ~4.7 s | GATT connection establishment |
+| Settle delay | 1.0 s | Wait for robot to be ready |
+| Each robot command | ~2.0 s | Full transport cycle (8 steps) |
+| Heartbeat interval | ~2.5 s | Notifications on cc4 |
+
+A full initial sequence (connect + 9 commands) takes approximately 21 seconds. To reduce time-to-first-data, poll status/battery first before reading infrequent data (name, lifetime statistics).
 
 ## Source References
 

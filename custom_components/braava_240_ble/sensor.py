@@ -4,6 +4,7 @@ Exposes:
   - Battery percentage sensor
   - Robot state sensor (idle / cleaning / error)
   - Pad type sensor (which cleaning pad is attached)
+  - Lifetime statistics (total missions, cleaning time, etc.)
 """
 
 import logging
@@ -14,7 +15,8 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE
+from homeassistant.const import PERCENTAGE, UnitOfTime
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, PAD_TYPE_MAP
@@ -30,6 +32,11 @@ async def async_setup_entry(hass, entry, async_add_entities):
         BraavaStateSensor(coordinator),
         BraavaBatterySensor(coordinator),
         BraavaPadTypeSensor(coordinator),
+        BraavaTotalMissionsSensor(coordinator),
+        BraavaSuccessfulMissionsSensor(coordinator),
+        BraavaFailedMissionsSensor(coordinator),
+        BraavaTotalCleaningTimeSensor(coordinator),
+        BraavaAverageMissionTimeSensor(coordinator),
     ])
 
 
@@ -120,3 +127,64 @@ class BraavaPadTypeSensor(_BraavaSensorBase):
         if pad == "no_pad":
             return "mdi:close-circle-outline"
         return "mdi:spray-bottle"
+
+
+# ── Lifetime statistics (from GET_BBK_DATA) ──────────────────────────────────
+
+class BraavaTotalMissionsSensor(_BraavaSensorBase):
+    """Total number of missions started."""
+
+    _attr_icon = "mdi:counter"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator, "total_missions", "total_missions")
+
+
+class BraavaSuccessfulMissionsSensor(_BraavaSensorBase):
+    """Total number of successfully completed missions."""
+
+    _attr_icon = "mdi:check-circle"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator, "successful_missions", "successful_missions")
+
+
+class BraavaFailedMissionsSensor(_BraavaSensorBase):
+    """Total number of failed missions."""
+
+    _attr_icon = "mdi:alert-circle"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator, "failed_missions", "failed_missions")
+
+
+class BraavaTotalCleaningTimeSensor(_BraavaSensorBase):
+    """Total cleaning time in hours."""
+
+    _attr_icon = "mdi:clock-outline"
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfTime.HOURS
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator, "total_cleaning_time", "total_cleaning_hours")
+
+
+class BraavaAverageMissionTimeSensor(_BraavaSensorBase):
+    """Average mission duration in minutes."""
+
+    _attr_icon = "mdi:timer-outline"
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfTime.MINUTES
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator, "average_mission_time", "average_mission_minutes")

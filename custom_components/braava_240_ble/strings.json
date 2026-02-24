@@ -48,6 +48,21 @@
           "all": "Alle",
           "no_pad": "Kein Tuch"
         }
+      },
+      "total_missions": {
+        "name": "Missionen gesamt"
+      },
+      "successful_missions": {
+        "name": "Erfolgreiche Missionen"
+      },
+      "failed_missions": {
+        "name": "Fehlgeschlagene Missionen"
+      },
+      "total_cleaning_time": {
+        "name": "Gesamte Reinigungszeit"
+      },
+      "average_mission_time": {
+        "name": "Durchschn. Missionsdauer"
       }
     },
     "select": {

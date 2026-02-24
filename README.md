@@ -6,7 +6,9 @@
 
 Custom Home Assistant integration to control the iRobot Braava 240 mopping robot via Bluetooth Low Energy (BLE).
 
-![Home Assistant Screenshot](images/screenshot.png)
+![Home Assistant Screenshot](images/screenshot01.png)
+
+![Home Assistant Screenshot](images/screenshot02.png)
 
 ## Features
 
@@ -20,6 +22,7 @@ Custom Home Assistant integration to control the iRobot Braava 240 mopping robot
 - **Volume control** – Adjustable speaker volume (0–100)
 - **Robot name** – Read and change the robot's Bluetooth name
 - **Room confinement** – Enable/disable room confinement mode
+- **Lifetime statistics** – Total missions, successful/failed missions, cleaning time, average duration
 - **Find robot** – Beep button to locate the robot
 - **Device information** – Serial number, firmware version, hardware revision via GATT Device Information Service
 - **Power off** – Power-off button to fully shut down the robot (disabled by default)
@@ -43,6 +46,11 @@ Custom Home Assistant integration to control the iRobot Braava 240 mopping robot
 | Volume | Number | Speaker volume (0–100) |
 | Name | Text | Robot name (read/write, max 20 characters) |
 | Room Confinement | Switch | Room confinement on/off |
+| Total Missions | Sensor | Lifetime missions started (diagnostic) |
+| Successful Missions | Sensor | Lifetime missions completed (diagnostic) |
+| Failed Missions | Sensor | Lifetime missions failed (diagnostic) |
+| Total Cleaning Time | Sensor | Lifetime cleaning time in hours (diagnostic) |
+| Average Mission Time | Sensor | Average mission duration in minutes (diagnostic) |
 | Beep | Button | Trigger an audible beep to locate the robot |
 | Reset Wetness | Button | Reset all wetness levels to defaults (Medium) |
 | Power Off | Button | Fully shut down the robot (must be manually enabled) |
@@ -77,20 +85,11 @@ If the robot is not discovered automatically:
 - Bluetooth adapter on the Home Assistant host (built-in or USB dongle)
 - iRobot Braava 240 (codename "Altadena")
 
-## BLE Protocol
-
-This integration communicates directly with the Braava 240 via BLE — **no cloud service** and **no iRobot account** required. All communication is fully local.
-
-The robot uses a two-layer GATT protocol:
-
-- **Transport layer** – Manages data transfer via two BLE characteristics (command + status)
-- **Robot command layer** – The actual commands (query status, start cleaning, etc.) are transferred as packets via a data characteristic
-
-For a detailed technical description of the BLE protocol, see [PROTOCOL.md](PROTOCOL.md).
-
 ## Vacuum Card
 
 This integration works with the [Vacuum Card](https://github.com/denysdovhan/vacuum-card) by Denys Dovhan for a visual dashboard experience.
+
+![Vacuum Card Screenshot](images/screenshot_card.png)
 
 The vacuum entity exposes `start`, `stop` and `locate` (beep) actions, and additional attributes (`pad_type`, `cleaning_mode`, `robot_name`, `runtime_minutes`, `mission_status`, `battery_voltage_v`) that can be used as stats. For translated values, reference the sensor entity directly via `entity_id` instead of using `attribute`.
 
@@ -130,9 +129,20 @@ shortcuts:
       option: normal
 ```
 
+## BLE Protocol
+
+This integration communicates directly with the Braava 240 via BLE — **no cloud service** and **no iRobot account** required. All communication is fully local.
+
+The robot uses a two-layer GATT protocol:
+
+- **Transport layer** – Manages data transfer via two BLE characteristics (command + status)
+- **Robot command layer** – The actual commands (query status, start cleaning, etc.) are transferred as packets via a data characteristic
+
+For a detailed technical description of the BLE protocol, see [PROTOCOL.md](PROTOCOL.md).
+
 ## Supported Robot Commands
 
-The Braava 240 firmware exposes 26 robot commands. This integration currently uses 18 of them:
+The Braava 240 firmware exposes 26 robot commands. This integration currently uses 19 of them:
 
 | ID | Command | Status | Description |
 |----|---------|--------|-------------|
@@ -142,7 +152,7 @@ The Braava 240 firmware exposes 26 robot commands. This integration currently us
 | 0x03 | GET_VOLUME | Implemented | Query speaker volume |
 | 0x04 | SET_VOLUME | Implemented | Set speaker volume |
 | 0x05 | SET_NAME | Implemented | Set robot name |
-| 0x06 | GET_BBK_DATA | – | Lifetime statistics (missions, runtime, errors) |
+| 0x06 | GET_BBK_DATA | Implemented | Lifetime statistics (missions, runtime, errors) |
 | 0x07 | GET_ROOM_CONFINE | Implemented | Query room confinement setting |
 | 0x08 | SET_ROOM_CONFINE | Implemented | Enable/disable room confinement |
 | 0x09 | REMOTE_CONTROL | Implemented | Enable/disable remote control mode |

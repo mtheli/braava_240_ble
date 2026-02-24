@@ -325,3 +325,70 @@ def _parse_room_confine(data: bytes, offset: int) -> dict | None:
         "type": "room_confine",
         "room_confine": bool(value),
     }
+
+
+def parse_bbk_life1(data: bytes, offset: int = CMD_HEADER_SIZE) -> dict | None:
+    """Parse GET_BBK_DATA group 1 response (60 bytes payload).
+
+    Lifetime statistics part 1 — mixed uint16/uint32 LE fields.
+    We extract only the fields needed for sensors.
+
+    Offset 32: MISSION_AVG_MINUTES (uint16)
+    Offset 54: N_MISSIONS_STARTED  (uint16)
+    Offset 56: N_MISSIONS_COMPLETED (uint16)
+    Offset 58: N_MISSIONS_FAILED   (uint16)
+    """
+    if len(data) < offset + 60:
+        _LOGGER.debug("BBK life1 response too short: %d bytes", len(data))
+        return None
+
+    avg_min   = int.from_bytes(data[offset + 32: offset + 34], "little")
+    started   = int.from_bytes(data[offset + 54: offset + 56], "little")
+    completed = int.from_bytes(data[offset + 56: offset + 58], "little")
+    failed    = int.from_bytes(data[offset + 58: offset + 60], "little")
+
+    _LOGGER.debug(
+        "BBK life1: missions=%d/%d/%d avg=%dmin",
+        started, completed, failed, avg_min,
+    )
+
+    return {
+        "type": "bbk_life1",
+        "total_missions": started,
+        "successful_missions": completed,
+        "failed_missions": failed,
+        "average_mission_minutes": avg_min,
+    }
+
+
+def parse_bbk_life2(data: bytes, offset: int = CMD_HEADER_SIZE) -> dict | None:
+    """Parse GET_BBK_DATA group 2 response.
+
+    Lifetime statistics part 2 — mixed uint16/uint32 LE fields.
+    We extract only the fields needed for sensors.
+
+    The Braava 240 firmware returns a 100-byte payload (103 total) rather
+    than the 88 bytes described in the Java source.  The field order also
+    differs: ONTIME and RUNTIME appear right after N_BLE_CONNECTIONS
+    instead of after AMT_RESULTS.
+
+    Payload layout (empirically verified):
+        Offset  0: PANIC_ID_0..9        (10 × uint16 = 20 bytes)
+        Offset 20: N_BLE_CONNECTIONS     (uint16)
+        Offset 22: ONTIME_MINUTES        (uint32)
+        Offset 26: RUNTIME_MINUTES       (uint32)
+    """
+    if len(data) < offset + 30:
+        _LOGGER.debug("BBK life2 response too short: %d bytes", len(data))
+        return None
+
+    ontime  = int.from_bytes(data[offset + 22: offset + 26], "little")
+    runtime = int.from_bytes(data[offset + 26: offset + 30], "little")
+
+    _LOGGER.debug("BBK life2: ontime=%dmin runtime=%dmin", ontime, runtime)
+
+    return {
+        "type": "bbk_life2",
+        "total_ontime_minutes": ontime,
+        "total_cleaning_minutes": runtime,
+    }

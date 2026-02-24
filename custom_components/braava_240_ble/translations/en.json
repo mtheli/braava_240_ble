@@ -48,6 +48,21 @@
           "all": "All",
           "no_pad": "No pad"
         }
+      },
+      "total_missions": {
+        "name": "Total Missions"
+      },
+      "successful_missions": {
+        "name": "Successful Missions"
+      },
+      "failed_missions": {
+        "name": "Failed Missions"
+      },
+      "total_cleaning_time": {
+        "name": "Total Cleaning Time"
+      },
+      "average_mission_time": {
+        "name": "Average Mission Time"
       }
     },
     "select": {
