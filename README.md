@@ -86,6 +86,8 @@ The robot uses a two-layer GATT protocol:
 - **Transport layer** – Manages data transfer via two BLE characteristics (command + status)
 - **Robot command layer** – The actual commands (query status, start cleaning, etc.) are transferred as packets via a data characteristic
 
+For a detailed technical description of the BLE protocol, see [PROTOCOL.md](PROTOCOL.md).
+
 ## Vacuum Card
 
 This integration works with the [Vacuum Card](https://github.com/denysdovhan/vacuum-card) by Denys Dovhan for a visual dashboard experience.
