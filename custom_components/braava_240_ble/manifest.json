@@ -12,6 +12,6 @@
   "integration_type": "device",
   "documentation": "https://github.com/mtheli/braava_240_ble",
   "issue_tracker": "https://github.com/mtheli/braava_240_ble/issues",
-  "iot_class": "local_push",
-  "homeassistant": "2024.11.0"
+  "dependencies": ["bluetooth"],
+  "iot_class": "local_push"
 }
