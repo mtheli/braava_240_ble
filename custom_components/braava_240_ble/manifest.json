@@ -8,7 +8,6 @@
     {"service_uuid": "0bd51777-e7cb-469b-8e4d-2742f1ba77cc"}
   ],
   "config_flow": true,
-  "options_flow": false,
   "integration_type": "device",
   "documentation": "https://github.com/mtheli/braava_240_ble",
   "issue_tracker": "https://github.com/mtheli/braava_240_ble/issues",
