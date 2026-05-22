@@ -1,6 +1,6 @@
 # iRobot Braava 240 BLE – Home Assistant Integration
 
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/default)
 [![GitHub Release](https://img.shields.io/github/v/release/mtheli/braava_240_ble)](https://github.com/mtheli/braava_240_ble/releases)
 [![License: MIT](https://img.shields.io/github/license/mtheli/braava_240_ble)](LICENSE)
 
@@ -59,16 +59,19 @@ Custom Home Assistant integration to control the iRobot Braava 240 mopping robot
 
 ### HACS (recommended)
 
-1. Open HACS in Home Assistant
-2. **Integrations** → three-dot menu → **Custom repositories**
-3. Enter the repository URL and select **Integration** as the category
-4. Install "iRobot Braava 240 BLE"
-5. Restart Home Assistant
+This integration is available in the **default HACS store** — just click the button below, or search HACS for "Braava".
 
-### Manual
+[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=mtheli&repository=braava_240_ble&category=integration)
+
+Then restart Home Assistant.
+
+<details>
+<summary>Manual installation</summary>
 
 1. Copy the `custom_components/braava_240_ble/` folder into your Home Assistant `config/custom_components/` directory
 2. Restart Home Assistant
+
+</details>
 
 ## Setup
 
