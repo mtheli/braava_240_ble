@@ -381,8 +381,17 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("GET_BBK_DATA group 2 failed: %s", err)
 
     async def _disconnect(self) -> None:
-        """Disconnect cleanly."""
-        if self._client and self._client.is_connected:
+        """Disconnect cleanly.
+
+        Not gated on is_connected: a client the robot already disconnected
+        still needs disconnect() called to close bleak's own D-Bus
+        connection. bleak only tears that down inside BleakClient.disconnect()
+        — a remote disconnect (on_disconnect callback) never calls it, so
+        the connection is otherwise left open and BlueZ keeps any
+        StartNotify registrations on it alive, re-arming them on the next
+        connect (same mechanism as mtheli/philips_sonicare_ble#45).
+        """
+        if self._client:
             try:
                 async with asyncio.timeout(5.0):
                     await self._client.disconnect()
