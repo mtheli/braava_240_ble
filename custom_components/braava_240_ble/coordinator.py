@@ -155,9 +155,14 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
         self._connection_lock = asyncio.Lock()
         self._command_lock = asyncio.Lock()  # serializes robot command transactions
 
-        # One-time reads (name, BBK stats) are deferred until after the first
-        # _poll() so that status/battery entities appear without waiting.
-        self._one_time_reads_pending = False
+        # Reads that are not part of the regular poll (name, BBK stats).
+        # Deferred until after the first _poll() so that status/battery
+        # entities appear without waiting.  An entry stays in the set until
+        # its read succeeds: during a mission the robot often answers BUSY,
+        # so a failed read is retried once the robot is idle again.
+        self._pending_reads: set[str] = set()
+        self._first_read_attempt = False
+        self._last_robot_state: int | None = None
 
         # Event signalled when the robot advertises (for fast reconnect)
         self._device_available = asyncio.Event()
@@ -234,16 +239,28 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
                 # ── Poll robot ─────────────────────────────────────────────────
                 await self._poll()
 
-                # ── Deferred one-time reads (after first poll) ────────────────
-                if self._one_time_reads_pending:
-                    self._one_time_reads_pending = False
-                    await self._read_robot_name()
-                    await self._read_bbk_data()
+                robot_state = self.data.get("robot_state")
+
+                # Lifetime stats change when a mission ends – read them again
+                if (
+                    self._last_robot_state == ROBOT_STATE_MISSION_IN_PROGRESS
+                    and robot_state is not None
+                    and robot_state != ROBOT_STATE_MISSION_IN_PROGRESS
+                ):
+                    self._pending_reads |= {"bbk1", "bbk2"}
+                self._last_robot_state = robot_state
+
+                # ── Deferred reads: right after connect, then retried while idle
+                if self._pending_reads and (
+                    self._first_read_attempt
+                    or robot_state != ROBOT_STATE_MISSION_IN_PROGRESS
+                ):
+                    self._first_read_attempt = False
+                    await self._run_pending_reads()
                     # Push the new data so name/BBK sensors appear immediately
                     self.async_set_updated_data(self.data)
 
                 # Adaptive interval: poll more frequently while cleaning
-                robot_state = self.data.get("robot_state")
                 interval = (
                     POLL_INTERVAL_CLEANING
                     if robot_state == ROBOT_STATE_MISSION_IN_PROGRESS
@@ -313,7 +330,8 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
 
         # Robot name + lifetime stats are read after the first _poll() cycle
         # so that status/battery entities appear without the extra delay.
-        self._one_time_reads_pending = True
+        self._pending_reads = {"name", "bbk1", "bbk2"}
+        self._first_read_attempt = True
 
     async def _read_gatt_device_info(self) -> None:
         """Read standard GATT Device Information Service characteristics."""
@@ -342,43 +360,60 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
             self.serial_number, self.sw_version, self.hw_version, self.model_number,
         )
 
-    async def _read_robot_name(self) -> None:
-        """Read the robot name via GET_NAME (once after connect)."""
+    async def _run_pending_reads(self) -> None:
+        """Run the outstanding non-poll reads; keep failed ones for a retry."""
+        readers = {
+            "name": self._read_robot_name,
+            "bbk1": self._read_bbk_life1,
+            "bbk2": self._read_bbk_life2,
+        }
+        for key in [k for k in readers if k in self._pending_reads]:
+            if await readers[key]():
+                self._pending_reads.discard(key)
+
+    async def _read_robot_name(self) -> bool:
+        """Read the robot name via GET_NAME. Returns True on success."""
         try:
             raw = await self._send_robot_command(CMD_GET_NAME)
-            if raw:
-                parsed = parse_response(raw)
-                if parsed and parsed.get("type") == "name":
-                    self.data["robot_name"] = parsed["robot_name"]
-                    _LOGGER.info("Robot name: %s", parsed["robot_name"])
         except BraavaProtocolError as err:
-            _LOGGER.debug("GET_NAME failed: %s", err)
+            _LOGGER.debug("GET_NAME failed, will retry: %s", err)
+            return False
+        parsed = parse_response(raw) if raw else None
+        if not parsed or parsed.get("type") != "name":
+            return False
+        self.data["robot_name"] = parsed["robot_name"]
+        _LOGGER.info("Robot name: %s", parsed["robot_name"])
+        return True
 
-    async def _read_bbk_data(self) -> None:
-        """Read lifetime statistics via GET_BBK_DATA groups 1 and 2."""
-        # Group 1: mission counts + average duration
+    async def _read_bbk_life1(self) -> bool:
+        """Read mission counts + average duration (GET_BBK_DATA group 1)."""
         try:
             raw = await self._send_robot_command(
                 CMD_GET_BBK_DATA, payload=bytes([1])
             )
-            if raw:
-                parsed = parse_bbk_life1(raw)
-                if parsed:
-                    _apply(self.data, parsed)
         except BraavaProtocolError as err:
-            _LOGGER.debug("GET_BBK_DATA group 1 failed: %s", err)
+            _LOGGER.debug("GET_BBK_DATA group 1 failed, will retry: %s", err)
+            return False
+        parsed = parse_bbk_life1(raw) if raw else None
+        if not parsed:
+            return False
+        _apply(self.data, parsed)
+        return True
 
-        # Group 2: total runtime
+    async def _read_bbk_life2(self) -> bool:
+        """Read the total cleaning time (GET_BBK_DATA group 2)."""
         try:
             raw = await self._send_robot_command(
                 CMD_GET_BBK_DATA, payload=bytes([2])
             )
-            if raw:
-                parsed = parse_bbk_life2(raw)
-                if parsed:
-                    _apply(self.data, parsed)
         except BraavaProtocolError as err:
-            _LOGGER.debug("GET_BBK_DATA group 2 failed: %s", err)
+            _LOGGER.debug("GET_BBK_DATA group 2 failed, will retry: %s", err)
+            return False
+        parsed = parse_bbk_life2(raw) if raw else None
+        if not parsed:
+            return False
+        _apply(self.data, parsed)
+        return True
 
     async def _disconnect(self) -> None:
         """Disconnect cleanly.
