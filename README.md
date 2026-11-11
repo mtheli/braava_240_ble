@@ -84,7 +84,7 @@ If the robot is not discovered automatically:
 
 ## Requirements
 
-- Home Assistant 2024.11.0 or newer
+- Home Assistant 2025.1.0 or newer
 - Bluetooth adapter on the Home Assistant host (built-in or USB dongle)
 - iRobot Braava 240 (codename "Altadena")
 
