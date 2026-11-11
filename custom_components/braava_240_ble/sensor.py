@@ -61,7 +61,14 @@ class _BraavaSensorBase(CoordinatorEntity, SensorEntity):
 
     @property
     def available(self) -> bool:
-        """Available while the robot is in BLE range (advertising)."""
+        """Available while connected or in BLE range (advertising).
+
+        The robot stops advertising while a GATT connection is up, so HA
+        drops its last advertisement after a few minutes – checking only
+        the advertisement would mark every sensor unavailable mid-mission.
+        """
+        if self.coordinator._connected:
+            return True
         svc = bluetooth.async_last_service_info(
             self.hass, self.coordinator.address, connectable=True
         )
