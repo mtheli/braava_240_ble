@@ -168,6 +168,9 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
         self._device_available = asyncio.Event()
         self._unsub_bluetooth: Callable | None = None
 
+        # Log an outage once, not on every reconnect attempt
+        self._unavailable_logged = False
+
     # ── Lifecycle ──────────────────────────────────────────────────────────────
 
     @callback
@@ -218,7 +221,7 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
                     )
 
                     if not service_info:
-                        _LOGGER.info(
+                        self._log_unavailable(
                             "Braava 240 not in range – waiting for advertisement (back-off %ds)",
                             backoff,
                         )
@@ -235,6 +238,9 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
                     backoff = _BACKOFF_MIN
                     async with self._connection_lock:
                         await self._connect(service_info.device)
+                    if self._unavailable_logged:
+                        _LOGGER.info("Braava 240 is available again")
+                        self._unavailable_logged = False
 
                 # ── Poll robot ─────────────────────────────────────────────────
                 await self._poll()
@@ -271,7 +277,7 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
             except asyncio.CancelledError:
                 raise
             except Exception as err:
-                _LOGGER.warning(
+                self._log_unavailable(
                     "Braava 240 monitoring error: %s – reconnecting in %ds", err, backoff
                 )
                 await self._disconnect()
@@ -283,6 +289,14 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
                 except asyncio.TimeoutError:
                     pass
                 backoff = min(backoff * 2, _BACKOFF_MAX)
+
+    def _log_unavailable(self, msg: str, *args) -> None:
+        """Log the first failure of an outage at info level, repeats at debug."""
+        if self._unavailable_logged:
+            _LOGGER.debug(msg, *args)
+            return
+        _LOGGER.info(msg + " (repeats are logged at debug level)", *args)
+        self._unavailable_logged = True
 
     # ── Connection management ──────────────────────────────────────────────────
 
