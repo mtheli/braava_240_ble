@@ -111,8 +111,8 @@ _BACKOFF_MIN = 10   # seconds – minimum reconnect back-off
 _BACKOFF_MAX = 300  # seconds – maximum reconnect back-off
 
 # Transport protocol timing
-_XFER_CHUNK_DELAY = 0.07   # seconds between data chunks (XFER_DELAY_INITIAL)
-_BLOCK_END_DELAY  = 0.5    # seconds after block end (DELAY_BETWEEN_BLOCKS)
+_XFER_CHUNK_DELAY = 0.07   # seconds between data chunks
+_BLOCK_END_DELAY  = 0.5    # seconds after block end
 # Waiting on the status characteristic: BUSY (0xFF) is re-read every 10 ms up
 # to 100 times; any other pending status (IPCPEND, 0xFE) is re-read after 1 s,
 # at most 3 times, then the command fails.

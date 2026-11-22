@@ -59,10 +59,12 @@ Byte 3:    status (signed: if >= 128, subtract 256)
 
 | ID | Name | Parameter | Description |
 |----|------|-----------|-------------|
+| 0 | SET_CLIENT_OS | `2` (Android; `1` = iOS) | Announce the client platform once after connecting. Commands answer noticeably faster afterwards (a status read 2.0 s instead of 2.75 s). |
 | 1 | RESET_STATE | `0x10000` | Reset the transport state machine. Response param is a firmware identifier (e.g. `0x240614`). |
 | 4 | BLOCK_END | block checksum | Signal end of a data block |
 | 5 | XFER_END | 0 | Signal end of a data transfer |
 | 8 | SEND_CMD | packet size | Execute the transferred robot command |
+| 10 | GET_SW_INFO | 0 | Robot software version: response param = `major << 16 \| minor << 8 \| image` (e.g. `0x043f02` → 4.63, image 2 = main software). Send after RESET_STATE. |
 | 12 | STAGE_DATA | `(offset << 8) \| count` | Stage response data for reading from cc1 |
 | 13 | DATA_XFER_START | padded byte count | Begin a data transfer session |
 | 14 | DATA_XFER_END | packet size | End a data transfer session |
@@ -76,7 +78,7 @@ Byte 3:    status (signed: if >= 128, subtract 256)
 | -2 (0xFE) | IPCPEND | IPC pending — poll cc3 again |
 | 3 | BADCMD | Bad command (normal for XFER_END, ignored) |
 
-When status is BUSY or IPCPEND, poll cc3 at 50 ms intervals (max 60 retries ≈ 3 s timeout).
+When status is BUSY, re-read cc3 every 10 ms (up to 100 times). When it is IPCPEND, re-read after 1 s (up to 3 times); after BLOCK_END re-read every 20 ms instead. After SEND_CMD, any non-zero status is re-read twice after 1 s before the command counts as failed. A whole command takes about 2 s; 5 s is a safe timeout (20 s for the lifetime statistics).
 
 ## Command State Machine
 
@@ -168,8 +170,9 @@ The following delays are implementation choices that have proven reliable in pra
 |-------|-------|---------|
 | Between data chunks | 70 ms | Chunk transfer pacing |
 | Between blocks | 500 ms | Block processing time |
-| Busy-wait poll interval | 50 ms | Status polling |
-| Max busy retries | 60 | ~3 s timeout |
+| BUSY re-read | 10 ms × 100 | Status polling |
+| IPCPEND re-read | 1 s × 3 (20 ms after BLOCK_END) | Status polling |
+| Command timeout | 5 s (20 s for GET_BBK_DATA) | Whole command |
 
 ## Robot Command Packet Format
 
@@ -502,13 +505,36 @@ No payload. Stops the active cleaning mission.
 |--------|-------|------|-------------|
 | 0 | runtime | byte | Mission runtime in minutes |
 | 1 | robot_state | byte | 0=idle, 1=cleaning, 2=success, 3=error |
-| 2 | mission_status | byte | Mission status code (0–34) |
+| 2 | mission_status | byte | Mission status code, see below |
 
 Robot state mapping:
 - `0` → idle
 - `1` → cleaning (mission in progress)
 - `2` → idle (mission ended successfully, returned to home)
 - `3` → error (mission ended with error — but see quirks)
+
+Mission status codes (the values are not contiguous; 5–15, 22–27 and 35 are not used):
+
+| Code | Meaning | Code | Meaning |
+|------|---------|------|---------|
+| 0 | undefined | 33 | failed to go home |
+| 1 | mission in progress | 34 | terminated by user (also a stop over BLE) |
+| 2 | robot reset | 36 | terminated by robot |
+| 3 | dead battery | 37 | max coverage (area too large) |
+| 4 | battery over temperature | 38 | pad ID error |
+| 16 | unknown cleaning result | 39 | kidnap (lifted) |
+| 17 | success | 40 | constant cliff |
+| 18 | unhandled failure | 41 | wheel drop |
+| 19 | start refused: cliff | 42 | stuck |
+| 20 | start refused: bumped | 43 | trapped |
+| 21 | start refused: invalid pad | 44 | high motor current |
+| 28 | start refused: gyro calibration | 45 | failed to make progress |
+| 29 | low battery | 46 | out of bounds |
+| 30 | timed out | 47 | gyro hardware failure |
+| 31 | watchdog timed out | | |
+| 32 | failed to relocalize | | |
+
+Observed on a real robot: `1` while cleaning, `17` after a normally finished job, `34` after a stop over BLE, `21` when a job could not start because the pad was not recognised. A stop, a stop by the robot (36), max coverage (37) and failed to go home (33) can come with robot state 3 but are not errors.
 
 Example response: `12 06 18 00 00 00`
 → cmd=0x12, size=6, payload: `00 00 00` → runtime=0 min, state=idle(0), mission=undefined(0)
@@ -543,19 +569,19 @@ Example response: `13 0e ec 03 80 0c 04 10 d5 0d 34 08 06 04`
 
 | Value | Pad Type |
 |-------|----------|
-| 0 | Invalid |
-| 1 | Damp |
-| 2 | Dry |
-| 3 | Wet |
-| 4 | Reusable Damp |
-| 5 | Reusable Dry |
-| 6 | Reusable Wet |
-| 7 | Plate |
-| 8 | All |
-| 9 | No Pad |
+| 0 | No pad |
+| 1 | Reusable Wet |
+| 2 | Wet |
+| 3 | Dry |
+| 4 | Dry |
+| 5 | Damp |
+| 7 | Reusable Damp |
+| 8 | Reusable Dry |
 
-Example response: `14 04 19 01`
-→ cmd=0x14, size=4, payload: `01` → pad_type = Damp (1)
+6 is not used. With a dry pad the robot reports 4.
+
+Example response: `14 04 1c 04`
+→ cmd=0x14, size=4, payload: `04` → pad_type = Dry (4)
 
 #### POWER_OFF (0x15)
 

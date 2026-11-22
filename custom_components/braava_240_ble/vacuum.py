@@ -1,10 +1,10 @@
 """Vacuum (robot mop) platform for the iRobot Braava 240 BLE integration.
 
 The Braava 240 is a robot mop.  Home Assistant's vacuum platform is the
-closest match – it provides start/stop controls and maps the BraavaRobotState
-enum to VacuumActivity states.
+closest match – it provides start/stop controls and maps the robot state byte
+to VacuumActivity states.
 
-State mapping (BraavaRobotState → VacuumActivity):
+State mapping (robot state → VacuumActivity):
     0 Idle                  → IDLE
     1 MissionInProgress     → CLEANING
     2 MissionEndedSuccess   → IDLE   (returned home)
