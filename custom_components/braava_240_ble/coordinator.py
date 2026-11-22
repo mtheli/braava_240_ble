@@ -33,6 +33,7 @@ Protocol flow for each robot command:
 """
 
 import asyncio
+import time
 import logging
 from collections.abc import Callable
 
@@ -42,6 +43,8 @@ from bleak_retry_connector import establish_connection
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import BluetoothCallbackMatcher
 from homeassistant.core import callback
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
@@ -75,16 +78,21 @@ from .const import (
     GATT_MODEL_NUMBER,
     GATT_SERIAL_NUMBER,
     GATT_SOFTWARE_REV,
-    POLL_INTERVAL_CLEANING,
-    POLL_INTERVAL_IDLE,
+    POLL_INTERVAL_BATTERY,
+    POLL_INTERVAL_PAD,
+    POLL_INTERVAL_STATUS,
     ROBOT_STATE_MISSION_IN_PROGRESS,
     TCMD_BLOCK_END,
+    TCMD_CLIENT_ANDROID,
+    TCMD_GET_SW_INFO,
+    TCMD_SET_CLIENT_OS,
     TCMD_DATA_XFER_END,
     TCMD_DATA_XFER_START,
     TCMD_RESET_STATE,
     TCMD_SEND_CMD,
     TCMD_STAGE_DATA,
     TCMD_XFER_END,
+    PAD_ERROR_MISSIONS,
     TSTATUS_BUSY,
     TSTATUS_IPCPEND,
     TSTATUS_OK,
@@ -105,11 +113,32 @@ _BACKOFF_MAX = 300  # seconds – maximum reconnect back-off
 # Transport protocol timing
 _XFER_CHUNK_DELAY = 0.07   # seconds between data chunks (XFER_DELAY_INITIAL)
 _BLOCK_END_DELAY  = 0.5    # seconds after block end (DELAY_BETWEEN_BLOCKS)
-_BUSY_POLL_DELAY  = 0.05   # seconds between busy-status re-reads
-_BUSY_MAX_RETRIES = 60     # max busy-wait iterations (~3s timeout)
+# Waiting on the status characteristic: BUSY (0xFF) is re-read every 10 ms up
+# to 100 times; any other pending status (IPCPEND, 0xFE) is re-read after 1 s,
+# at most 3 times, then the command fails.
+_BUSY_POLL_DELAY      = 0.01
+_BUSY_MAX_RETRIES     = 100
+_PENDING_POLL_DELAY   = 1.0
+_PENDING_MAX_RETRIES  = 3
+# Announce the client platform after connecting. Measured on a real robot
+# (software 4.63): a GET_STATUS took 2.75 s (median) without it and 1.98 s
+# with it, the lifetime statistics 4.7–4.9 s and 2.3 s.
+_SEND_CLIENT_OS = True
+
+# Whole-command timeout. The lifetime statistics answer with up to 100 bytes
+# in many staged reads and need longer over BLE (group 2 took more than 5 s).
+_COMMAND_TIMEOUT      = 5.0
+_BBK_COMMAND_TIMEOUT  = 20.0
 
 
-class BraavaProtocolError(Exception):
+# Commands that only read: everything else is a control or set command.
+_READ_COMMANDS = frozenset({
+    CMD_GET_STATUS, CMD_GET_BATTERY, CMD_GET_PAD_TYPE, CMD_GET_VOLUME,
+    CMD_GET_WETNESS, CMD_GET_ROOM_CONFINE, CMD_GET_NAME, CMD_GET_BBK_DATA,
+})
+
+
+class BraavaProtocolError(HomeAssistantError):
     """Raised when the Braava transport protocol returns an error."""
 
 
@@ -139,6 +168,8 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
         # or read from GATT Device Information Service on first connect as fallback
         self.device_info_read = sw_version is not None or hw_version is not None
         self.sw_version: str | None = sw_version
+        # Robot software version from GET_SW_INFO (e.g. "4.63").
+        self.robot_sw_version: str | None = None
         self.hw_version: str | None = hw_version
         self.serial_number: str | None = serial_number
         self.model_number: str | None = None
@@ -154,6 +185,7 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
         self._live_task: asyncio.Task | None = None
         self._connection_lock = asyncio.Lock()
         self._command_lock = asyncio.Lock()  # serializes robot command transactions
+        self._control_waiting = 0  # control/set commands waiting for the lock
 
         # Reads that are not part of the regular poll (name, BBK stats).
         # Deferred until after the first _poll() so that status/battery
@@ -161,11 +193,18 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
         # its read succeeds: during a mission the robot often answers BUSY,
         # so a failed read is retried once the robot is idle again.
         self._pending_reads: set[str] = set()
+        # Settings to read back on the next poll (after connect or a write).
+        self._settings_dirty = False
+        # Monotonic time of the last successful periodic read, per command.
+        self._last_read: dict[int, float] = {}
         self._first_read_attempt = False
         self._last_robot_state: int | None = None
 
         # Event signalled when the robot advertises (for fast reconnect)
         self._device_available = asyncio.Event()
+        # Set after a control command: the live loop polls the status at once
+        # instead of a second, parallel poll from the command.
+        self._poll_now = asyncio.Event()
         self._unsub_bluetooth: Callable | None = None
 
         # Log an outage once, not on every reconnect attempt
@@ -257,7 +296,9 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
                 self._last_robot_state = robot_state
 
                 # ── Deferred reads: right after connect, then retried while idle
-                if self._pending_reads and (
+                # A control command waits for its status: postpone the slow
+                # deferred reads (several seconds each) to the next cycle.
+                if self._pending_reads and not self._poll_now.is_set() and (
                     self._first_read_attempt
                     or robot_state != ROBOT_STATE_MISSION_IN_PROGRESS
                 ):
@@ -266,13 +307,13 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
                     # Push the new data so name/BBK sensors appear immediately
                     self.async_set_updated_data(self.data)
 
-                # Adaptive interval: poll more frequently while cleaning
-                interval = (
-                    POLL_INTERVAL_CLEANING
-                    if robot_state == ROBOT_STATE_MISSION_IN_PROGRESS
-                    else POLL_INTERVAL_IDLE
-                )
-                await asyncio.sleep(interval)
+                try:
+                    await asyncio.wait_for(
+                        self._poll_now.wait(), timeout=POLL_INTERVAL_STATUS
+                    )
+                except asyncio.TimeoutError:
+                    pass
+                self._poll_now.clear()
 
             except asyncio.CancelledError:
                 raise
@@ -334,6 +375,9 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
         except Exception as err:
             _LOGGER.debug("Heartbeat notifications not available: %s", err)
 
+        if _SEND_CLIENT_OS:
+            await self._set_client_os()
+
         self._connected = True
         _LOGGER.info("Connected to Braava 240 (%s)", self.address)
 
@@ -343,8 +387,11 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
 
         # Robot name + lifetime stats are read after the first _poll() cycle
         # so that status/battery entities appear without the extra delay.
-        self._pending_reads = {"name", "bbk1", "bbk2"}
+        self._pending_reads = {"sw_info", "name", "bbk1", "bbk2"}
         self._first_read_attempt = True
+        # Read battery, pad type and the settings on the first poll.
+        self._last_read = {}
+        self._settings_dirty = True
 
     async def _read_gatt_device_info(self) -> None:
         """Read standard GATT Device Information Service characteristics."""
@@ -376,13 +423,58 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
     async def _run_pending_reads(self) -> None:
         """Run the outstanding non-poll reads; keep failed ones for a retry."""
         readers = {
+            "sw_info": self._read_sw_info,
             "name": self._read_robot_name,
             "bbk1": self._read_bbk_life1,
             "bbk2": self._read_bbk_life2,
         }
         for key in [k for k in readers if k in self._pending_reads]:
+            if self._poll_now.is_set() or self._control_waiting:
+                break  # a control command goes first
             if await readers[key]():
                 self._pending_reads.discard(key)
+
+    async def _set_client_os(self) -> None:
+        """Announce the client platform (transport command 0, 2 = Android)
+        right after enabling the heartbeat notifications."""
+        try:
+            async with self._command_lock, asyncio.timeout(_COMMAND_TIMEOUT):
+                _, status = await self._transport_cmd(
+                    TCMD_SET_CLIENT_OS, TCMD_CLIENT_ANDROID, pending_retries=2, retry_any=True
+                )
+            _LOGGER.debug("SET_CLIENT_OS sent: status=%d", status)
+        except (BraavaProtocolError, TimeoutError) as err:
+            _LOGGER.debug("SET_CLIENT_OS failed: %s", err)
+
+    async def _read_sw_info(self) -> bool:
+        """Read the robot software version (GET_SW_INFO). The Device
+        Information "firmware" (e.g. 1.4.0) is the BLE module's; the robot
+        software reports e.g. 4.63. Returns True on success."""
+        try:
+            async with self._command_lock, asyncio.timeout(_COMMAND_TIMEOUT * 2):
+                _, status = await self._transport_cmd(TCMD_RESET_STATE, 0x10000)
+                if status != TSTATUS_OK:
+                    raise BraavaProtocolError(f"RESET_STATE failed: status={status}")
+                # A non-zero answer is re-read after 1 s, up to 9 times.
+                param, status = await self._transport_cmd(
+                    TCMD_GET_SW_INFO, 0, pending_retries=9, retry_any=True
+                )
+        except (BraavaProtocolError, TimeoutError) as err:
+            _LOGGER.debug("GET_SW_INFO failed, will retry: %s", err)
+            return False
+        if status != TSTATUS_OK:
+            _LOGGER.debug("GET_SW_INFO failed, will retry: status=%d", status)
+            return False
+        major, minor, image_id = (param >> 16) & 0xFF, (param >> 8) & 0xFF, param & 0xFF
+        version = f"{major}.{minor:02d}"
+        _LOGGER.info(
+            "Robot software %s (image %d; BLE module %s)", version, image_id, self.sw_version
+        )
+        self.robot_sw_version = version
+        registry = dr.async_get(self.hass)
+        if device := registry.async_get_device(identifiers={(DOMAIN, self.address)}):
+            registry.async_update_device(device.id, sw_version=version)
+        return True
 
     async def _read_robot_name(self) -> bool:
         """Read the robot name via GET_NAME. Returns True on success."""
@@ -448,11 +540,24 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("Disconnect error: %s", err)
 
         self._client = None
+        was_connected = self._connected
         self._connected = False
+        # A link lost without the disconnected callback (e.g. a failed read or
+        # reconnect) must still flip the connected sensor and the vacuum.
+        if was_connected:
+            self.async_update_listeners()
 
     # ── Transport layer (cc2 write → cc3 read) ────────────────────────────────
 
-    async def _transport_cmd(self, cmd: int, param: int = 0) -> tuple[int, int]:
+    async def _transport_cmd(
+        self,
+        cmd: int,
+        param: int = 0,
+        *,
+        pending_delay: float = _PENDING_POLL_DELAY,
+        pending_retries: int = _PENDING_MAX_RETRIES,
+        retry_any: bool = False,
+    ) -> tuple[int, int]:
         """Send a transport command to cc2 and read the status from cc3.
 
         Writes 4 bytes to cc2: little-endian int32 = (cmd << 24) | (param & 0xFFFFFF)
@@ -475,7 +580,9 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
         await self._client.write_gatt_char(CHAR_UUID_COMMAND, wire_bytes, response=True)
 
         # Read cc3 and handle busy-wait
-        for attempt in range(_BUSY_MAX_RETRIES):
+        busy_left = _BUSY_MAX_RETRIES
+        pending_left = pending_retries
+        while True:
             resp = bytes(await self._client.read_gatt_char(CHAR_UUID_STATUS))
 
             if len(resp) < 4:
@@ -492,10 +599,18 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
             )
 
             if status == TSTATUS_BUSY:
+                busy_left -= 1
+                if busy_left <= 0:
+                    break
                 await asyncio.sleep(_BUSY_POLL_DELAY)
                 continue
-            if status == TSTATUS_IPCPEND:
-                await asyncio.sleep(_BUSY_POLL_DELAY * 2)
+            if status == TSTATUS_IPCPEND or (retry_any and status != TSTATUS_OK):
+                pending_left -= 1
+                if pending_left < 0:
+                    if retry_any:
+                        return resp_param, status  # caller reports the status
+                    break
+                await asyncio.sleep(pending_delay)
                 continue
 
             return resp_param, status
@@ -522,8 +637,29 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
         The command lock ensures only one robot command runs at a time.
         Concurrent commands would interleave transport writes on the BLE link.
         """
-        async with self._command_lock:
-            return await self._send_robot_command_locked(cmd_id, payload)
+        # Control and set commands go before the periodic reads: the poll and
+        # the deferred reads stop while one is waiting.
+        control = cmd_id not in _READ_COMMANDS
+        timeout = (
+            _BBK_COMMAND_TIMEOUT if cmd_id == CMD_GET_BBK_DATA else _COMMAND_TIMEOUT
+        )
+        if control:
+            self._control_waiting += 1
+        try:
+            async with self._command_lock:
+                if control:
+                    self._control_waiting -= 1
+                    control = False
+                try:
+                    async with asyncio.timeout(timeout):
+                        return await self._send_robot_command_locked(cmd_id, payload)
+                except TimeoutError as err:
+                    raise BraavaProtocolError(
+                        f"Command 0x{cmd_id:02x} timed out after {timeout:.0f}s"
+                    ) from err
+        finally:
+            if control:
+                self._control_waiting -= 1
 
     async def _send_robot_command_locked(self, cmd_id: int, payload: bytes = b"") -> bytes | None:
         """Inner implementation of _send_robot_command (called with _command_lock held)."""
@@ -560,11 +696,15 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
             await asyncio.sleep(_XFER_CHUNK_DELAY)
 
         # ── Step 4: BLOCK_END with checksum ──────────────────────────────────
-        _, status = await self._transport_cmd(TCMD_BLOCK_END, block_checksum)
+        # A pending BLOCK_END is re-read after 20 ms, without a limit (the
+        # command timeout ends it).
+        _, status = await self._transport_cmd(
+            TCMD_BLOCK_END, block_checksum, pending_delay=0.02, pending_retries=1000
+        )
         if status != TSTATUS_OK:
             raise BraavaProtocolError(f"BLOCK_END failed: status={status}")
 
-        # Wait between blocks)
+        # Wait between blocks
         await asyncio.sleep(_BLOCK_END_DELAY)
 
         # ── Step 5: XFER_END ─────────────────────────────────────────────────
@@ -573,7 +713,10 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
         await self._transport_cmd(TCMD_XFER_END, 0)
 
         # ── Step 6: SEND_CMD ─────────────────────────────────────────────────
-        resp_param, status = await self._transport_cmd(TCMD_SEND_CMD, len(cmd_packet))
+        # Any non-zero SEND_CMD status is re-read after 1 s, twice.
+        resp_param, status = await self._transport_cmd(
+            TCMD_SEND_CMD, len(cmd_packet), pending_retries=2, retry_any=True
+        )
         if status != TSTATUS_OK:
             raise BraavaProtocolError(f"SEND_CMD failed: status={status}")
 
@@ -617,98 +760,93 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
 
     # ── Polling ────────────────────────────────────────────────────────────────
 
+    async def _read_into(
+        self, new_data: dict, cmd_id: int, name: str, *, critical: bool = False
+    ) -> bool:
+        """Send one GET command and merge its parsed answer into *new_data*.
+
+        A protocol error (e.g. the robot stayed BUSY) is logged and re-raised
+        for the caller to decide; any other error is re-raised only for
+        *critical* reads, so the live loop reconnects.
+        """
+        try:
+            raw = await self._send_robot_command(cmd_id)
+        except BraavaProtocolError as err:
+            if critical:
+                _LOGGER.warning("%s failed: %s", name, err)
+            else:
+                _LOGGER.debug("%s failed: %s", name, err)
+            raise
+        except Exception as err:
+            _LOGGER.debug("%s error: %s", name, err)
+            if critical:
+                raise
+            return False
+        if raw:
+            parsed = parse_response(raw)
+            if parsed:
+                _apply(new_data, parsed)
+                return True
+        return False
+
     async def _poll(self) -> None:
-        """Send GET_STATUS + GET_BATTERY via the transport protocol."""
+        """Read status, battery, pad type and (when needed) the settings."""
         if not self._client or not self._client.is_connected:
             return
 
         new_data = dict(self.data)
         received = 0
-        robot_busy = False
 
-        # GET_STATUS
+        # GET_STATUS – pushed at once, so a started, stopped or failed mission
+        # shows without waiting for the slower reads below (~2 s each).
         try:
-            raw = await self._send_robot_command(CMD_GET_STATUS)
-            if raw:
-                parsed = parse_response(raw)
-                if parsed:
-                    _apply(new_data, parsed)
-                    received += 1
-        except BraavaProtocolError as err:
-            _LOGGER.warning("GET_STATUS failed: %s", err)
-            robot_busy = True
-        except Exception as err:
-            _LOGGER.warning("GET_STATUS error: %s", err)
-            raise
-
-        # GET_BATTERY – skip if the robot was busy (IPCPEND), it will fail too
-        if robot_busy:
+            if await self._read_into(new_data, CMD_GET_STATUS, "GET_STATUS", critical=True):
+                received += 1
+        except BraavaProtocolError:
+            # Robot busy (IPCPEND): the other commands would fail too.
             _LOGGER.debug("Skipping remaining commands – robot busy")
-        else:
-            try:
-                raw = await self._send_robot_command(CMD_GET_BATTERY)
-                if raw:
-                    parsed = parse_response(raw)
-                    if parsed:
-                        _apply(new_data, parsed)
-                        received += 1
-            except BraavaProtocolError as err:
-                _LOGGER.warning("GET_BATTERY failed: %s", err)
-            except Exception as err:
-                _LOGGER.warning("GET_BATTERY error: %s", err)
-                raise
+            self.async_set_updated_data(new_data if new_data != self.data else (self.data or {}))
+            return
+        if new_data != self.data:
+            self.async_set_updated_data(dict(new_data))
 
-            # GET_PAD_TYPE
+        now = time.monotonic()
+        reads = []
+        # The pad type is read at once when a pad error appears or clears;
+        # otherwise every POLL_INTERVAL_PAD.
+        pad_error = new_data.get("mission_status") in PAD_ERROR_MISSIONS
+        pad_changed = pad_error != (self.data.get("mission_status") in PAD_ERROR_MISSIONS)
+        for cmd_id, name, interval, force in (
+            (CMD_GET_BATTERY, "GET_BATTERY", POLL_INTERVAL_BATTERY, False),
+            (CMD_GET_PAD_TYPE, "GET_PAD_TYPE", POLL_INTERVAL_PAD, pad_changed),
+        ):
+            last = self._last_read.get(cmd_id)
+            if force or last is None or now - last >= interval:
+                reads.append((cmd_id, name))
+        # Volume, wetness and room confinement are settings: read once after
+        # connecting and after we write one, not periodically.
+        if self._settings_dirty:
+            reads += [
+                (CMD_GET_VOLUME, "GET_VOLUME"),
+                (CMD_GET_WETNESS, "GET_WETNESS"),
+                (CMD_GET_ROOM_CONFINE, "GET_ROOM_CONFINE"),
+            ]
+        settings_done = False
+        for cmd_id, name in reads:
+            if self._control_waiting:
+                break  # a control command goes first; the rest stays due
             try:
-                raw = await self._send_robot_command(CMD_GET_PAD_TYPE)
-                if raw:
-                    parsed = parse_response(raw)
-                    if parsed:
-                        _apply(new_data, parsed)
-                        received += 1
-            except BraavaProtocolError as err:
-                _LOGGER.debug("GET_PAD_TYPE failed: %s", err)
-            except Exception as err:
-                _LOGGER.debug("GET_PAD_TYPE error: %s", err)
-
-            # GET_VOLUME
-            try:
-                raw = await self._send_robot_command(CMD_GET_VOLUME)
-                if raw:
-                    parsed = parse_response(raw)
-                    if parsed:
-                        _apply(new_data, parsed)
-                        received += 1
-            except BraavaProtocolError as err:
-                _LOGGER.debug("GET_VOLUME failed: %s", err)
-            except Exception as err:
-                _LOGGER.debug("GET_VOLUME error: %s", err)
-
-            # GET_WETNESS
-            try:
-                raw = await self._send_robot_command(CMD_GET_WETNESS)
-                if raw:
-                    parsed = parse_response(raw)
-                    if parsed:
-                        _apply(new_data, parsed)
-                        received += 1
-            except BraavaProtocolError as err:
-                _LOGGER.debug("GET_WETNESS failed: %s", err)
-            except Exception as err:
-                _LOGGER.debug("GET_WETNESS error: %s", err)
-
-            # GET_ROOM_CONFINE
-            try:
-                raw = await self._send_robot_command(CMD_GET_ROOM_CONFINE)
-                if raw:
-                    parsed = parse_response(raw)
-                    if parsed:
-                        _apply(new_data, parsed)
-                        received += 1
-            except BraavaProtocolError as err:
-                _LOGGER.debug("GET_ROOM_CONFINE failed: %s", err)
-            except Exception as err:
-                _LOGGER.debug("GET_ROOM_CONFINE error: %s", err)
+                if await self._read_into(
+                    new_data, cmd_id, name, critical=cmd_id == CMD_GET_BATTERY
+                ):
+                    received += 1
+                    self._last_read[cmd_id] = now
+            except BraavaProtocolError:
+                pass
+            if cmd_id == CMD_GET_ROOM_CONFINE:
+                settings_done = True
+        if settings_done:
+            self._settings_dirty = False
 
         if received > 0 or new_data != self.data:
             self.async_set_updated_data(new_data)
@@ -735,19 +873,21 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
         else:
             await self._send_with_retry(CMD_START_CLEAN)
             _LOGGER.info("START_CLEAN sent to Braava 240")
-        # Trigger an immediate status poll so the UI updates promptly
-        await asyncio.sleep(1.0)
-        await self._poll()
+        # Let the live loop read the status at once so the UI updates promptly
+        self._poll_now.set()
 
     async def async_stop_cleaning(self) -> None:
         """Send STOP_CLEAN command (0x11)."""
         await self._send_with_retry(CMD_STOP_CLEAN)
         _LOGGER.info("STOP_CLEAN sent to Braava 240")
-        await asyncio.sleep(1.0)
-        await self._poll()
+        self._poll_now.set()
 
     async def async_beep(self) -> None:
-        """Send BEEP command (0x0D). Requires remote control mode to be active."""
+        """Send BEEP command (0x0D) inside remote control mode.
+
+        Sent alone, BEEP is rejected (SEND_CMD status 4, robot software 4.63);
+        with remote control mode around it, the robot beeps.
+        """
         await self._send_robot_command(CMD_REMOTE_CONTROL, payload=bytes([1]))
         try:
             await self._send_robot_command(CMD_BEEP)
@@ -758,11 +898,13 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
     async def async_set_volume(self, level: int) -> None:
         """Send SET_VOLUME command (0x04)."""
         await self._send_robot_command(CMD_SET_VOLUME, payload=bytes([level]))
+        self._settings_dirty = True
         _LOGGER.info("SET_VOLUME(%d) sent to Braava 240", level)
 
     async def async_set_wetness(self, pad_type: int, level: int) -> None:
         """Send SET_WETNESS command (0x02). payload: [type, level]."""
         await self._send_robot_command(CMD_SET_WETNESS, payload=bytes([pad_type, level]))
+        self._settings_dirty = True
         _LOGGER.info("SET_WETNESS(type=%d, level=%d) sent to Braava 240", pad_type, level)
 
     async def async_reset_wetness(self) -> None:
@@ -778,7 +920,9 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def async_set_name(self, name: str) -> None:
         """Send SET_NAME command (0x05). Name is a null-terminated string, max 20 bytes."""
-        encoded = name.encode("utf-8")[:19]  # Leave room for null terminator
+        # 19 bytes leave room for the null terminator; cut at a character
+        # boundary so a multi-byte character is not split.
+        encoded = name.encode("utf-8")[:19].decode("utf-8", "ignore").encode("utf-8")
         payload = encoded + b"\x00" * (20 - len(encoded))  # Pad to 20 bytes
         await self._send_robot_command(CMD_SET_NAME, payload=payload)
         self.data["robot_name"] = encoded.decode("utf-8")
@@ -786,8 +930,14 @@ class BraavaDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def async_set_room_confine(self, enabled: bool) -> None:
         """Send SET_ROOM_CONFINE command (0x08). payload: 0=off, 1=on."""
+        if self.data.get("robot_state") == ROBOT_STATE_MISSION_IN_PROGRESS:
+            # The robot has to finish or cancel the job first.
+            raise HomeAssistantError(
+                "Room confinement cannot be changed while the robot is cleaning"
+            )
         await self._send_robot_command(CMD_SET_ROOM_CONFINE, payload=bytes([int(enabled)]))
         self.data["room_confine"] = enabled
+        self._settings_dirty = True
         _LOGGER.info("SET_ROOM_CONFINE(%s) sent to Braava 240", enabled)
 
     # ── DataUpdateCoordinator override ────────────────────────────────────────

@@ -39,7 +39,7 @@ print("\n=== Parsing synthetic responses ===")
 
 # GET_STATUS response:
 #   [cmd=0x12, total_size=6, checksum, runtime=5min, state=1=cleaning, mission=26=in_progress]
-raw_status = bytearray([0x12, 0x06, 0x00, 0x05, 0x01, 0x1A])
+raw_status = bytearray([0x12, 0x06, 0x00, 0x05, 0x01, 0x01])  # cleaning, in_progress
 raw_status[2] = sum(raw_status[i] for i in range(len(raw_status)) if i != 2) & 0xFF
 print(f"\nGET_STATUS  raw: {bytes(raw_status).hex(' ')}")
 print(f"            parsed: {parse_response(bytes(raw_status))}")

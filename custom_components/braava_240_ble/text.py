@@ -27,7 +27,7 @@ class BraavaNameText(CoordinatorEntity, TextEntity):
     _attr_translation_key = "robot_name"
     _attr_icon = "mdi:robot-mower"
     _attr_mode = TextMode.TEXT
-    _attr_native_max = 20
+    _attr_native_max = 19
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator)

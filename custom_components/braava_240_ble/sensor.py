@@ -118,7 +118,7 @@ class BraavaPadTypeSensor(_BraavaSensorBase):
     """Enum sensor showing the attached cleaning pad type."""
 
     _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = list(PAD_TYPE_MAP.values())
+    _attr_options = list(dict.fromkeys(PAD_TYPE_MAP.values()))
     _attr_icon = "mdi:spray-bottle"
 
     def __init__(self, coordinator) -> None:

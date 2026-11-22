@@ -25,8 +25,11 @@ CHAR_UUID_HEARTBEAT = "e7add780-b042-4876-aae1-112855353cc4"  # Heartbeat notifi
 
 # ── Transport-layer commands ──────────────────────────────────────────────────
 # Written to cc2 as 4-byte packets; status read back from cc3.
+TCMD_SET_CLIENT_OS   = 0   # Client platform (param 1 = iOS, 2 = Android), sent once after connecting
+TCMD_CLIENT_ANDROID  = 2
 TCMD_RESET_STATE     = 1   # Reset transport state machine
 TCMD_BLOCK_END       = 4   # End of a data block (param = checksum)
+TCMD_GET_SW_INFO     = 10  # Robot software version: param = major<<16 | minor<<8 | image id
 TCMD_XFER_END        = 5   # End of data transfer
 TCMD_SEND_CMD        = 8   # Execute the transferred robot command
 TCMD_STAGE_DATA      = 12  # Stage response data for reading (param = addr<<8 | count)
@@ -83,64 +86,75 @@ ROBOT_STATE_MAP: dict[int, str] = {
 
 # ── Mission status – selected values ──────────────────────────────────────────
 MISSION_STATUS_UNDEFINED            = 0
-MISSION_STATUS_SUCCESS              = 1
-MISSION_STATUS_TERMINATED_BY_USER   = 6
-MISSION_STATUS_TERMINATED_BY_ROBOT  = 7
-MISSION_STATUS_DEAD_BATTERY         = 9
-MISSION_STATUS_LOW_BATTERY          = 11
-MISSION_STATUS_STUCK                = 20
-MISSION_STATUS_IN_PROGRESS          = 26
+MISSION_STATUS_IN_PROGRESS          = 1
+MISSION_STATUS_DEAD_BATTERY         = 3
+MISSION_STATUS_SUCCESS              = 17
+MISSION_STATUS_START_REFUSED_INVALID_PAD = 21
+MISSION_STATUS_LOW_BATTERY          = 29
+MISSION_STATUS_TERMINATED_BY_USER   = 34
+MISSION_STATUS_TERMINATED_BY_ROBOT  = 36
+MISSION_STATUS_STUCK                = 42
 
-# Human-readable labels for mission status codes
+# Raw mission status byte of GET_STATUS → name. The codes are not contiguous
+# (5–15, 22–27 and 35 are not used).
 MISSION_STATUS_MAP: dict[int, str] = {
     0:  "undefined",
-    1:  "success",
-    2:  "start_refused_cliff",
-    3:  "start_refused_bumped",
-    4:  "start_refused_invalid_pad",
-    5:  "start_refused_gyro_cal",
-    6:  "terminated_by_user",
-    7:  "terminated_by_robot",
-    8:  "kidnap",
-    9:  "dead_battery",
-    10: "battery_over_temp",
-    11: "low_battery",
-    12: "timed_out",
-    13: "watchdog_timed_out",
-    14: "failed_to_relocalize",
-    15: "failed_to_go_home",
-    16: "max_coverage",
-    17: "pad_id_error",
-    18: "constant_cliff",
-    19: "wheel_drop",
-    20: "stuck",
-    21: "trapped",
-    22: "high_motor_current",
-    23: "failed_to_make_progress",
-    24: "out_of_bounds",
-    25: "gyro_hardware_failure",
-    26: "in_progress",
-    27: "robot_reset",
-    28: "unknown_cleaning_result",
-    29: "unhandled_failure",
-    34: "terminated_by_ble",  # observed after STOP_CLEAN via BLE
+    1:  "in_progress",
+    2:  "robot_reset",
+    3:  "dead_battery",
+    4:  "battery_over_temp",
+    16: "unknown_cleaning_result",
+    17: "success",
+    18: "unhandled_failure",
+    19: "start_refused_cliff",
+    20: "start_refused_bumped",
+    21: "start_refused_invalid_pad",
+    28: "start_refused_gyro_cal",
+    29: "low_battery",
+    30: "timed_out",
+    31: "watchdog_timed_out",
+    32: "failed_to_relocalize",
+    33: "failed_to_go_home",
+    34: "terminated_by_user",
+    36: "terminated_by_robot",
+    37: "max_coverage",
+    38: "pad_id_error",
+    39: "kidnap",
+    40: "constant_cliff",
+    41: "wheel_drop",
+    42: "stuck",
+    43: "trapped",
+    44: "high_motor_current",
+    45: "failed_to_make_progress",
+    46: "out_of_bounds",
+    47: "gyro_hardware_failure",
 }
 
-# Mission statuses that indicate a user-initiated stop (not a real error)
-USER_STOP_MISSIONS = {6, 34}  # terminated_by_user, terminated_by_ble
+# Mission statuses that mean a pad problem (the pad type is read again)
+PAD_ERROR_MISSIONS = {MISSION_STATUS_START_REFUSED_INVALID_PAD, 38}
+
+# Mission ends that are not errors, although the robot may report them with
+# robot_state=error(3): a stop by the user or by the robot, and a job that
+# ended because the area was too large or the way home was not found.
+NON_ERROR_END_MISSIONS = {
+    MISSION_STATUS_TERMINATED_BY_USER,
+    MISSION_STATUS_TERMINATED_BY_ROBOT,
+    33,  # failed_to_go_home
+    37,  # max_coverage
+}
 
 # ── Pad types ────────────────────────────────────────────────────────────
+# Raw pad type byte of GET_PAD_TYPE → name. 6 is not used; 3 and 4 are both
+# dry pads (verified with a dry pad: the robot reports 4).
 PAD_TYPE_MAP: dict[int, str] = {
-    0: "invalid",
-    1: "damp",
-    2: "dry",
-    3: "wet",
-    4: "reusable_damp",
-    5: "reusable_dry",
-    6: "reusable_wet",
-    7: "plate",
-    8: "all",
-    9: "no_pad",
+    0: "no_pad",
+    1: "reusable_wet",
+    2: "wet",
+    3: "dry",
+    4: "dry",
+    5: "damp",
+    7: "reusable_damp",
+    8: "reusable_dry",
 }
 
 # ── Wetness levels ──────────────────────────────────────────────────────────
@@ -187,5 +201,9 @@ IROBOT_MANUFACTURER_ID = 1536
 BRAAVA_NAME_PREFIXES = ("Altadena", "iRobot Braav")
 
 # ── Polling ───────────────────────────────────────────────────────────────────
-POLL_INTERVAL_CLEANING = 5   # seconds – while mopping
-POLL_INTERVAL_IDLE     = 15  # seconds – when docked/idle
+# Polling cadence: the mission status every 5 s in every state, the pad type
+# every 30 s, the battery every 60 s. Wetness, volume and room confinement are
+# read once after connecting (and after we set them).
+POLL_INTERVAL_STATUS  = 5   # seconds
+POLL_INTERVAL_PAD     = 30  # seconds
+POLL_INTERVAL_BATTERY = 60  # seconds

@@ -32,7 +32,7 @@ from .const import (
     PAD_TYPE_MAP,
     ROBOT_STATE_MAP,
     ROBOT_STATE_MISSION_ERROR,
-    USER_STOP_MISSIONS,
+    NON_ERROR_END_MISSIONS,
     WETNESS_LEVEL_MAP,
 )
 
@@ -95,6 +95,7 @@ def parse_response(data: bytes) -> dict | None:
             "Response checksum mismatch: got 0x%02x, expected 0x%02x for: %s",
             data[2], expected_chk, data.hex(" "),
         )
+        return None  # a corrupted response is dropped
 
     # Payload starts after the 3-byte header
     payload_offset = CMD_HEADER_SIZE
@@ -126,8 +127,8 @@ def _parse_status(data: bytes, offset: int) -> dict | None:
 
     Payload layout:
         Byte 0: runtime     – mission runtime in minutes
-        Byte 1: robot_state – BraavaRobotState enum value (0–3)
-        Byte 2: mission_status – BraavaMissionStatus enum value (0–29)
+        Byte 1: robot_state – 0 idle, 1 cleaning, 2 ended, 3 ended with error
+        Byte 2: mission_status – raw code, see MISSION_STATUS_MAP
     """
     if len(data) < offset + 3:
         _LOGGER.debug(
@@ -143,9 +144,9 @@ def _parse_status(data: bytes, offset: int) -> dict | None:
     state_str  = ROBOT_STATE_MAP.get(robot_state, f"unknown_{robot_state}")
     status_str = MISSION_STATUS_MAP.get(mission_status, f"unknown_{mission_status}")
 
-    # User-initiated stop reports state=error(3) + terminated mission status.
-    # This isn't a real error – the robot just stopped. Treat as idle.
-    if robot_state == ROBOT_STATE_MISSION_ERROR and mission_status in USER_STOP_MISSIONS:
+    # A stop or a completed job may come with state=error(3). That isn't a
+    # real error – the robot just stopped. Treat as idle.
+    if robot_state == ROBOT_STATE_MISSION_ERROR and mission_status in NON_ERROR_END_MISSIONS:
         robot_state = 0
         state_str = "idle"
 
@@ -213,7 +214,7 @@ def _parse_pad_type(data: bytes, offset: int) -> dict | None:
     """Parse GET_PAD_TYPE response payload (1 byte).
 
     Payload layout:
-        Byte 0: pad_type – RobotPadCategory enum value (0–9)
+        Byte 0: pad_type – raw code, see PAD_TYPE_MAP
     """
     if len(data) < offset + 1:
         _LOGGER.debug("GET_PAD_TYPE response too short: %d bytes", len(data))
