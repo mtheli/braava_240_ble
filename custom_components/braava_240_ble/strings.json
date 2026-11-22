@@ -21,7 +21,59 @@
     }
   },
   "entity": {
-    "vacuum": {},
+    "vacuum": {
+      "braava": {
+        "state_attributes": {
+          "mission_status": {
+            "name": "Mission status",
+            "state": {
+              "undefined": "Undefined",
+              "in_progress": "Cleaning in progress",
+              "robot_reset": "Robot was reset",
+              "dead_battery": "Battery empty",
+              "battery_over_temp": "Battery too hot",
+              "unknown_cleaning_result": "Unknown result",
+              "success": "Finished",
+              "unhandled_failure": "Unhandled failure",
+              "start_refused_cliff": "Did not start: cliff detected",
+              "start_refused_bumped": "Did not start: bumper pressed",
+              "start_refused_invalid_pad": "Did not start: pad not recognized",
+              "start_refused_gyro_cal": "Did not start: gyro calibration",
+              "low_battery": "Battery low",
+              "timed_out": "Timed out",
+              "watchdog_timed_out": "Watchdog timed out",
+              "failed_to_relocalize": "Lost its position",
+              "failed_to_go_home": "Could not return to start",
+              "terminated_by_user": "Stopped by user",
+              "terminated_by_robot": "Stopped by robot",
+              "max_coverage": "Area too large",
+              "pad_id_error": "Pad not recognized",
+              "kidnap": "Lifted",
+              "constant_cliff": "Cliff sensor blocked",
+              "wheel_drop": "Wheel dropped",
+              "stuck": "Stuck",
+              "trapped": "Trapped",
+              "high_motor_current": "Motor overloaded",
+              "failed_to_make_progress": "Not making progress",
+              "out_of_bounds": "Out of bounds",
+              "gyro_hardware_failure": "Gyro failure"
+            }
+          },
+          "pad_type": {
+            "name": "Pad",
+            "state": {
+              "no_pad": "Kein Tuch",
+              "reusable_wet": "Wiederverwendbar nass",
+              "wet": "Nass",
+              "dry": "Trocken",
+              "damp": "Feucht",
+              "reusable_damp": "Wiederverwendbar feucht",
+              "reusable_dry": "Wiederverwendbar trocken"
+            }
+          }
+        }
+      }
+    },
     "sensor": {
       "robot_state": {
         "name": "Status",

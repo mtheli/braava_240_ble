@@ -49,6 +49,7 @@ class BraavaVacuumEntity(CoordinatorEntity, StateVacuumEntity):
 
     _attr_has_entity_name = True
     _attr_name = None  # entity name = device name
+    _attr_translation_key = "braava"  # translated mission_status / pad_type attributes
     _attr_supported_features = _SUPPORTED_FEATURES
 
     def __init__(self, coordinator) -> None:
